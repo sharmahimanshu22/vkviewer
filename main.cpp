@@ -85,7 +85,7 @@ const std::vector<pretty::Vertex> vertices = {
 };
 
 const std::vector<uint16_t> indices = {
-    0, 1, 2, 2, 3, 0,
+  0, 1, 2, 2, 3, 0,
     4, 5, 6, 6, 7, 4
 };
 
@@ -443,7 +443,7 @@ private:
   }
   
   void createTextureImageView() {
-    textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_DEPTH_BIT);
+    textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
   }
   
   
@@ -1061,7 +1061,7 @@ private:
     
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP; //VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
     
     VkPipelineViewportStateCreateInfo viewportState{};
@@ -1194,7 +1194,7 @@ private:
     swapChainImageViews.resize(swapChainImages.size());
     
     for (uint32_t i = 0; i < swapChainImages.size(); i++) {
-      swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+      swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     }
   }
   
