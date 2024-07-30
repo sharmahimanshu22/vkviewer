@@ -6,9 +6,10 @@
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/hash.hpp>
+#include <iostream>
 
 
-namespace pretty {
+namespace vkview {
   
   DataForGPU loadModel(const std::string model_path) {
     tinyobj::attrib_t attrib;
@@ -50,6 +51,7 @@ namespace pretty {
 	dataForGPU.indices.push_back(uniqueVertices[vertex]);
       }
     }
+    std::cout << dataForGPU.indices.size() << " should have worked\n";
     return dataForGPU;
   }
 
