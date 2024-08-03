@@ -23,6 +23,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
+
 const uint32_t WIDTH = 1600;
 const uint32_t HEIGHT = 1200;
 const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -40,6 +44,15 @@ const bool enableValidationLayers = false;
 #else
 const bool enableValidationLayers = true;
 #endif
+
+static void check_vk_result(VkResult err)
+{
+    if (err == 0)
+        return;
+    fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
+    if (err < 0)
+        abort();
+}
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger) {
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
@@ -89,9 +102,13 @@ public:
     }
 
 private:
+
+  bool swapChainRebuild = false;
+  
   GLFWwindow* window;
 
   VkSurfaceKHR surface;
+  VkSurfaceKHR imguisurface;
   
   VkInstance instance;
   VkDebugUtilsMessengerEXT debugMessenger;
@@ -99,6 +116,7 @@ private:
   VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
   
   VkDevice device;
+  QueueFamilyIndices _queueFamilyIndices;
   VkQueue graphicsQueue;
   VkQueue presentQueue;
 
@@ -154,7 +172,8 @@ private:
 
   std::vector<vkview::Vertex> vertices;
   std::vector<uint32_t> indices;
-  
+
+  ImGui_ImplVulkanH_Window g_MainWindowData;
   
   void initWindow() {
     glfwInit();
@@ -173,7 +192,7 @@ private:
     setupDebugMessenger();
     createSurface();
     pickPhysicalDevice();
-    printPhysicalDeviceProperties();
+    //printPhysicalDeviceProperties();
     createLogicalDevice();
     createSwapChain();
     createImageViews();
@@ -194,7 +213,106 @@ private:
     createDescriptorSets();
     createCommandBuffer();
     createSyncObjects();
+    init_imgui();
   }
+
+
+  void init_imgui()
+  {
+
+    int w, h;
+    glfwGetFramebufferSize(window, &w, &h);
+    ImGui_ImplVulkanH_Window* wd = &g_MainWindowData;
+
+    std::cout << "setupvulkanwindow start\n\n\n";
+
+    //VkResult err = glfwCreateWindowSurface(instance, window, NULL, &surface);
+    
+    SetupVulkanWindow(wd, surface, w, h);
+    std::cout << "setupvulkanwindow complete\n\n\n";
+    //1: create descriptor pool for IMGUI
+    // the size of the pool is very oversize, but it's copied from imgui demo itself.
+    /*
+    VkDescriptorPoolSize pool_sizes[] =
+      {
+	{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+	{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+	{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+	{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+	{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+	{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+      };
+    
+    VkDescriptorPoolCreateInfo pool_info = {};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    pool_info.maxSets = 1000;
+    pool_info.poolSizeCount = std::size(pool_sizes);
+    pool_info.pPoolSizes = pool_sizes;
+    
+    VkDescriptorPool imguiPool;
+    VK_CHECK(vkCreateDescriptorPool(_device, &pool_info, nullptr, &imguiPool));
+    */
+    
+    
+    // 2: initialize imgui library
+    
+    //this initializes the core structures of imgui
+    
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    //ImGui::StyleColorsLight();
+    
+    
+    //this initializes imgui for SDL
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+    
+    //this initializes imgui for Vulkan
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.Instance = instance;
+    init_info.PhysicalDevice = physicalDevice;
+    init_info.Device = device;
+    init_info.QueueFamily = _queueFamilyIndices.graphicsFamily.value();
+    init_info.Queue = graphicsQueue;
+    init_info.DescriptorPool = descriptorPool;
+    init_info.PipelineCache = VK_NULL_HANDLE;
+    init_info.Allocator = NULL;
+    init_info.CheckVkResultFn = check_vk_result;
+    init_info.RenderPass = wd->RenderPass;
+    init_info.Subpass = 0;
+    init_info.MinImageCount = 2;
+    init_info.ImageCount = wd->ImageCount;
+    //init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    
+    ImGui_ImplVulkan_Init(&init_info);
+    
+    //execute a gpu command to upload imgui font textures
+    //immediate_submit([&](VkCommandBuffer cmd) {
+    // ImGui_ImplVulkan_CreateFontsTexture(cmd);
+    //});
+    
+    //clear font textures from cpu data
+    //ImGui_ImplVulkan_DestroyFontUploadObjects();
+    
+    //add the destroy the imgui created structures
+    //_mainDeletionQueue.push_function([=]() {
+      
+    //vkDestroyDescriptorPool(_device, imguiPool, nullptr);
+    //ImGui_ImplVulkan_Shutdown();
+    //});
+  }
+  
 
 
   void loadModel() {
@@ -477,15 +595,16 @@ private:
   void createDescriptorPool() {
     std::array<VkDescriptorPoolSize, 2> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolSizes[0].descriptorCount = static_cast<uint32_t>(100*MAX_FRAMES_IN_FLIGHT);
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolSizes[1].descriptorCount = static_cast<uint32_t>(100*MAX_FRAMES_IN_FLIGHT);
     
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolInfo.maxSets = static_cast<uint32_t>(100*MAX_FRAMES_IN_FLIGHT);
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     
     if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
       throw std::runtime_error("failed to create descriptor pool!");
@@ -759,7 +878,9 @@ private:
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
+    std::cout << "till here 1\n\n";
     VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    std::cout << "till here 2\n\n"; 
     
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
       recreateSwapChain();
@@ -817,6 +938,27 @@ private:
       recreateSwapChain();
     } else if (result != VK_SUCCESS) {
       throw std::runtime_error("failed to present swap chain image!");
+    }
+
+    bool show_demo_window = true;
+
+    
+    ImVec4 clear_color = ImVec4(0.45f, 0.1f, 0.10f, 1.00f);
+    ImGui_ImplVulkan_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+    ImGui::ShowDemoWindow(&show_demo_window);
+    ImGui::Render();
+    ImDrawData* draw_data = ImGui::GetDrawData();
+    const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
+    if (!is_minimized)
+    {
+    	g_MainWindowData.ClearValue.color.float32[0] = clear_color.x * clear_color.w;
+    	g_MainWindowData.ClearValue.color.float32[1] = clear_color.y * clear_color.w;
+    	g_MainWindowData.ClearValue.color.float32[2] = clear_color.z * clear_color.w;
+    	g_MainWindowData.ClearValue.color.float32[3] = clear_color.w;
+	FrameRender(&g_MainWindowData, draw_data);
+	FramePresent(&g_MainWindowData);
     }
     
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
@@ -909,7 +1051,7 @@ private:
   }
   
   void createCommandPool() {
-    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices queueFamilyIndices = _queueFamilyIndices;
 
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -1218,7 +1360,7 @@ private:
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices indices = _queueFamilyIndices;
     uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
     
     if (indices.graphicsFamily != indices.presentFamily) {
@@ -1320,7 +1462,7 @@ private:
   }
   
   void createLogicalDevice() {
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices indices = _queueFamilyIndices;
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
@@ -1390,6 +1532,11 @@ private:
       vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
     }
 
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    ImGui_ImplVulkanH_DestroyWindow(instance, device, &g_MainWindowData, NULL);
+
     vkDestroyDescriptorPool(device, descriptorPool, nullptr);
     vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 
@@ -1415,6 +1562,7 @@ private:
 
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkDestroyInstance(instance, nullptr);
+
     
     glfwDestroyWindow(window);
     
@@ -1430,10 +1578,10 @@ private:
       std::vector<VkExtensionProperties> extensionss(extensionCount);
       vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionss.data());
       
-      std::cout << "available extensions:\n";
-      for (const auto& extension : extensionss) {
-	std::cout << '\t' << extension.extensionName << " extensions\n";
-      }
+      //std::cout << "available extensions:\n";
+      //for (const auto& extension : extensionss) {
+      //	std::cout << '\t' << extension.extensionName << " extensions\n";
+      //}
 
  
       if (enableValidationLayers && !checkValidationLayerSupport()) {
@@ -1513,6 +1661,7 @@ private:
         for (const auto& device : devices) {
             if (isDeviceSuitable(device)) {
                 physicalDevice = device;
+		_queueFamilyIndices = findQueueFamilies(device);
                 break;
             }
         }
@@ -1548,9 +1697,9 @@ private:
 
     std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 
-    for (const auto& extension : availableExtensions) {
-      std::cout << extension.extensionName << " available extension of physical device\n";
-    }
+    //for (const auto& extension : availableExtensions) {
+    // std::cout << extension.extensionName << " available extension of physical device\n";
+    //}
 
     for (const auto& extension : availableExtensions) {
         requiredExtensions.erase(extension.extensionName);
@@ -1559,39 +1708,73 @@ private:
     return requiredExtensions.empty();
   }
 
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
-        QueueFamilyIndices indices;
-
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
-        int i = 0;
-        for (const auto& queueFamily : queueFamilies) {
-	  //std::cout << std::bitset<32>(queueFamily.queueFlags) << " : queue family\n";
-            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-	      std::cout << "Is this true \n";
-	      indices.graphicsFamily = i;
-            }
-
-	    VkBool32 presentSupport = false;
-	    vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
-
-	    if (presentSupport) {
-	      indices.presentFamily = i;
-	    }
-	    
-            if (indices.isComplete()) {
-                break;
-            }
-
-            i++;
-        }
-
-        return indices;
+  QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
+    QueueFamilyIndices indices;
+    
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+    
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+    
+    int i = 0;
+    for (const auto& queueFamily : queueFamilies) {
+      //std::cout << std::bitset<32>(queueFamily.queueFlags) << " : queue family\n";
+      if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+	indices.graphicsFamily = i;
+      }
+      
+      VkBool32 presentSupport = false;
+      vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+      
+      if (presentSupport) {
+	indices.presentFamily = i;
+      }
+      
+      if (indices.isComplete()) {
+	break;
+      }
+      
+      i++;
     }
+    
+    return indices;
+  }
+
+  void SetupVulkanWindow(ImGui_ImplVulkanH_Window* wd, VkSurfaceKHR surface, int width, int height)
+  {
+    wd->Surface = surface;
+    wd->Swapchain = swapChain;
+    // Check for WSI support
+    VkBool32 res;
+    vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, _queueFamilyIndices.graphicsFamily.value(), wd->Surface, &res);
+    if (res != VK_TRUE)
+      {
+        fprintf(stderr, "Error no WSI support on physical device 0\n");
+        exit(-1);
+      }
+    
+    // Select Surface Format
+    const VkFormat requestSurfaceImageFormat[] = { VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8_UNORM, VK_FORMAT_R8G8B8_UNORM };
+    const VkColorSpaceKHR requestSurfaceColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR;
+    wd->SurfaceFormat = ImGui_ImplVulkanH_SelectSurfaceFormat(physicalDevice, wd->Surface, requestSurfaceImageFormat, (size_t)IM_ARRAYSIZE(requestSurfaceImageFormat), requestSurfaceColorSpace);
+    
+    // Select Present Mode
+#ifdef APP_USE_UNLIMITED_FRAME_RATE
+    VkPresentModeKHR present_modes[] = { VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_FIFO_KHR };
+#else
+    VkPresentModeKHR present_modes[] = { VK_PRESENT_MODE_FIFO_KHR };
+#endif
+    wd->PresentMode = ImGui_ImplVulkanH_SelectPresentMode(physicalDevice, wd->Surface, &present_modes[0], IM_ARRAYSIZE(present_modes));
+    //printf("[vulkan] Selected PresentMode = %d\n", wd->PresentMode);
+
+    // Create SwapChain, RenderPass, Framebuffer, etc.
+    //IM_ASSERT(g_MinImageCount >= 2);
+    ImGui_ImplVulkanH_CreateOrResizeWindow(instance, physicalDevice, device, wd, _queueFamilyIndices.graphicsFamily.value(), NULL, width, height, 2);
+        std::cout << "tillhere\n";
+
+  }
+  
 
     std::vector<const char*> getRequiredExtensions() {
         uint32_t glfwExtensionCount = 0;
@@ -1619,9 +1802,9 @@ private:
         std::vector<VkLayerProperties> availableLayers(layerCount);
         vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
-	for(auto e : availableLayers) {
-	  std::cout << e.layerName << " available layers\n";
-	}
+	//for(auto e : availableLayers) {
+	//std::cout << e.layerName << " available layers\n";
+	//}
 
         for (const char* layerName : validationLayers) {
             bool layerFound = false;
@@ -1640,6 +1823,98 @@ private:
 
         return true;
     }
+
+  
+
+void FrameRender(ImGui_ImplVulkanH_Window* wd, ImDrawData* draw_data)
+{
+    VkResult err;
+
+    VkSemaphore image_acquired_semaphore  = wd->FrameSemaphores[wd->SemaphoreIndex].ImageAcquiredSemaphore;
+    VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
+    err = vkAcquireNextImageKHR(device, wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE, &wd->FrameIndex);
+    if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR)
+    {
+        swapChainRebuild = true;
+        return;
+    }
+    check_vk_result(err);
+
+    ImGui_ImplVulkanH_Frame* fd = &wd->Frames[wd->FrameIndex];
+    {
+        err = vkWaitForFences(device, 1, &fd->Fence, VK_TRUE, UINT64_MAX);    // wait indefinitely instead of periodically checking
+        check_vk_result(err);
+
+        err = vkResetFences(device, 1, &fd->Fence);
+        check_vk_result(err);
+    }
+    {
+        err = vkResetCommandPool(device, fd->CommandPool, 0);
+        check_vk_result(err);
+        VkCommandBufferBeginInfo info = {};
+        info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        err = vkBeginCommandBuffer(fd->CommandBuffer, &info);
+        check_vk_result(err);
+    }
+    {
+        VkRenderPassBeginInfo info = {};
+        info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        info.renderPass = wd->RenderPass;
+        info.framebuffer = fd->Framebuffer;
+        info.renderArea.extent.width = wd->Width;
+        info.renderArea.extent.height = wd->Height;
+        info.clearValueCount = 1;
+        info.pClearValues = &wd->ClearValue;
+        vkCmdBeginRenderPass(fd->CommandBuffer, &info, VK_SUBPASS_CONTENTS_INLINE);
+    }
+
+    // Record dear imgui primitives into command buffer
+    ImGui_ImplVulkan_RenderDrawData(draw_data, fd->CommandBuffer);
+
+    // Submit command buffer
+    vkCmdEndRenderPass(fd->CommandBuffer);
+    {
+        VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        VkSubmitInfo info = {};
+        info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        info.waitSemaphoreCount = 1;
+        info.pWaitSemaphores = &image_acquired_semaphore;
+        info.pWaitDstStageMask = &wait_stage;
+        info.commandBufferCount = 1;
+        info.pCommandBuffers = &fd->CommandBuffer;
+        info.signalSemaphoreCount = 1;
+        info.pSignalSemaphores = &render_complete_semaphore;
+
+        err = vkEndCommandBuffer(fd->CommandBuffer);
+        check_vk_result(err);
+        err = vkQueueSubmit(graphicsQueue, 1, &info, fd->Fence);
+        check_vk_result(err);
+    }
+}
+
+void FramePresent(ImGui_ImplVulkanH_Window* wd)
+{
+    if (swapChainRebuild)
+        return;
+    VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
+    VkPresentInfoKHR info = {};
+    info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    info.waitSemaphoreCount = 1;
+    info.pWaitSemaphores = &render_complete_semaphore;
+    info.swapchainCount = 1;
+    info.pSwapchains = &wd->Swapchain;
+    info.pImageIndices = &wd->FrameIndex;
+    VkResult err = vkQueuePresentKHR(presentQueue, &info);
+    if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR)
+    {
+        swapChainRebuild = true;
+        return;
+    }
+    check_vk_result(err);
+    wd->SemaphoreIndex = (wd->SemaphoreIndex + 1) % wd->SemaphoreCount; // Now we can use the next set of semaphores
+}
+
 
     static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
         std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
