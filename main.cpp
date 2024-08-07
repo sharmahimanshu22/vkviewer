@@ -182,6 +182,8 @@ private:
   ImGui_ImplVulkanH_Window g_MainWindowData;
 
   bool dragged = false;
+  UniformBufferObject ubo;
+  glm::vec2 mousePos;
   
   void initWindow() {
     glfwInit();
@@ -199,13 +201,21 @@ private:
     set_cursor_enter_callback();
   }
 
-  static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+  void updateUBO(glm::vec2 delta) {
+
+    glm::mat4 transform = ubo.view;
+    transform = glm::rotate(transform, -delta[0]/300, glm::vec3(0.0f, 1.0f, 0.0f));
+    transform = glm::rotate(transform, -delta[1]/300, glm::vec3(1.0f, 0.0f, 0.0f));
+    ubo.view = transform;
+  }
+
+  static void mouse_button_callback(GLFWwindow* w, int button, int action, int mods)
   {
 
     double xpos, ypos;
-    glfwGetCursorPos(window, &xpos, &ypos);
+    glfwGetCursorPos(w, &xpos, &ypos);
     
-    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(w));
     
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
       //mousePos = glm::vec2(xpos,ypos);
@@ -290,12 +300,14 @@ private:
   static void cursor_position_callback(GLFWwindow* w, double xpos, double ypos)
   {
     //std::cout << xpos << "," << ypos << " :cursor position without press\n";
+    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(w));
     
-    //if(this->dragged) {
-    //glm::vec2 delta = glm::vec2(xpos - this->mousePos[0], ypos - this->mousePos[1]);
-      //this->view.trackball(delta);
-      //this->mousePos = glm::vec2(xpos, ypos);
-    //}
+    if(app->dragged) {
+      glm::vec2 delta = glm::vec2(xpos - app->mousePos[0], ypos - app->mousePos[1]);
+      app->mousePos = glm::vec2(xpos, ypos);
+      app->updateUBO(delta);
+    }
+    app->mousePos = glm::vec2(xpos, ypos);
     
   }
 
@@ -749,7 +761,6 @@ private:
     uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
 
-    UniformBufferObject ubo{};
     ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
@@ -954,6 +965,8 @@ private:
  
   
   void updateUniformBuffer(uint32_t currentImage) {
+
+    /*
     static auto startTime = std::chrono::high_resolution_clock::now();
     
     auto currentTime = std::chrono::high_resolution_clock::now();
@@ -964,6 +977,7 @@ private:
     ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
     ubo.proj[1][1] *= -1;
+    */
     
     memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
   }
@@ -985,7 +999,7 @@ private:
     }
 
 
-    //updateUniformBuffer(currentFrame);    
+    updateUniformBuffer(currentFrame);    
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
     
     
