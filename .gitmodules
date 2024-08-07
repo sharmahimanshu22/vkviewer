@@ -13,3 +13,9 @@
 [submodule "deps/imgui"]
 	path = deps/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "deps/openstl"]
+	path = deps/openstl
+	url = https://github.com/Innoptech/OpenSTL.git
+[submodule "deps/geogram"]
+	path = deps/geogram
+	url = https://github.com/BrunoLevy/geogram.git
