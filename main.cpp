@@ -12,7 +12,7 @@
 #include <algorithm> // Necessary for std::clamp
 #include <fstream>
 #include "objLoader.h"
-
+#include "openstl/core/stl.h"
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -26,6 +26,8 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
+
+#include <geogram/numerics/predicates.h>
 
 const uint32_t WIDTH = 1600;
 const uint32_t HEIGHT = 1200;
@@ -178,6 +180,8 @@ private:
   std::vector<uint32_t> indices;
 
   ImGui_ImplVulkanH_Window g_MainWindowData;
+
+  bool dragged = false;
   
   void initWindow() {
     glfwInit();
@@ -189,7 +193,137 @@ private:
 
     glfwSetWindowUserPointer(window, this);
     glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+
+    set_cursor_position_callback();
+    set_mouse_button_callback();
+    set_cursor_enter_callback();
   }
+
+  static void mouse_button_callback(GLFWwindow* window, int button, int action, int mods)
+  {
+
+    double xpos, ypos;
+    glfwGetCursorPos(window, &xpos, &ypos);
+    
+    auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+    
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+      //mousePos = glm::vec2(xpos,ypos);
+      app->dragged = true;
+      std::cout << "all done in pressed\n";
+    }
+    
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
+      //glm::vec2 delta = glm::vec2(xpos - this->mousePos[0], ypos - this->mousePos[1]);
+      //this->view.trackball(delta);
+      //mousePos = glm::vec2(xpos, ypos);
+      app->dragged = false;
+      std::cout << "all done in release\n";
+    }    
+  }
+
+
+  
+  void set_mouse_button_callback() {
+
+    /*
+    typedef void (HelloTriangleApplication::*Fun) (int button, int action, int mods, double xpos, double ypos);
+    Fun func = &HelloTriangleApplication::mouse_button_callback;
+    //    MyGLWindow<Fun,OpenGLWindow> *gw = new MyGLWindow(func, this);
+    glfwSetWindowUserPointer(window, this);
+
+
+    auto mouse_button_callback_lambda = [](GLFWwindow* w, int button, int action, int mods)
+					{
+					  double xpos, ypos;
+					  glfwGetCursorPos(w, &xpos, &ypos);
+					  static_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(w))
+					    ->mouse_button_callback(button, action, mods, xpos, ypos);
+					};
+    */
+    glfwSetWindowUserPointer(window, this);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
+  }
+
+  
+  static void cursor_enter_callback(GLFWwindow* w, int entered)
+  {
+    if (entered)
+      {
+        // The cursor entered the content area of the window
+	//this->cursor_in_window = true;
+	//std::cout << "cursor in window set true \n";
+      }
+    else
+      {
+        // The cursor left the content area of the window
+	//this->cursor_in_window = false;
+	//std::cout << "cursor in window set false \n";
+    }
+  }
+
+  
+  void set_cursor_enter_callback() {
+
+    /*
+    typedef void (HelloTriangleApplication::*Fun) (int entered);
+    Fun func = &HelloTriangleApplication::cursor_enter_callback;
+    glfwSetWindowUserPointer(window, this);
+
+
+    auto cursor_enter_callback_lambda = [](GLFWwindow* w, int entered)
+    {
+      // can be used to check from where cursor entered
+      //      double xpos, ypos;
+      //glfwGetCursorPos(w, &xpos, &ypos);
+      //cout << xpos << ypos << "here\n";
+      static_cast<HelloTriangleApplication *>(glfwGetWindowUserPointer(w))->cursor_enter_callback(entered);
+
+      //static_cast<MyGLWindow<Fun,HelloTriangleApplication> *>(glfwGetWindowUserPointer(w))->cursor_enter_callback(entered);
+    };
+    */
+    glfwSetWindowUserPointer(window, this);
+    glfwSetCursorEnterCallback(window, cursor_enter_callback);
+  }
+  
+
+  static void cursor_position_callback(GLFWwindow* w, double xpos, double ypos)
+  {
+    //std::cout << xpos << "," << ypos << " :cursor position without press\n";
+    
+    //if(this->dragged) {
+    //glm::vec2 delta = glm::vec2(xpos - this->mousePos[0], ypos - this->mousePos[1]);
+      //this->view.trackball(delta);
+      //this->mousePos = glm::vec2(xpos, ypos);
+    //}
+    
+  }
+
+  
+  void set_cursor_position_callback() {
+
+    glfwSetWindowUserPointer(window, this);
+    glfwSetCursorPosCallback(window, cursor_position_callback);
+
+    /*
+    
+    typedef void (HelloTriangleApplication::*Fun) (double xpos, double ypos);
+    Fun func = &HelloTriangleApplication::cursor_position_callback;
+    glfwSetWindowUserPointer(window, this);
+
+    auto cursor_position_callback_lambda = [](GLFWwindow* w, double xpos, double ypos)
+    {
+      //static_cast<MyGLWindow<Fun,OpenGLWindow> *>(glfwGetWindowUserPointer(w))->cursor_position_callback(xpos,ypos);
+
+      static_cast<HelloTriangleApplication *>(glfwGetWindowUserPointer(w))->cursor_position_callback(xpos,ypos);
+
+    };
+    
+    glfwSetCursorPosCallback(window, cursor_position_callback_lambda);
+    */
+  }
+
+  
   
   void initVulkan() {
     createInstance();
@@ -614,11 +748,21 @@ private:
     uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    UniformBufferObject ubo{};
+    ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+    ubo.proj[1][1] *= -1;
+    
+
     
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
       createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
       
       vkMapMemory(device, uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+      memcpy(uniformBuffersMapped[i], &ubo, sizeof(ubo));
+
     }
   }
   
@@ -797,17 +941,18 @@ private:
     vkFreeMemory(device, depthImageMemory, nullptr);
     
     for (size_t i = 0; i < swapChainFramebuffers.size(); i++) {
-        vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
-	vkDestroyFramebuffer(device, uiFramebuffers[i], nullptr);
+      vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
+      vkDestroyFramebuffer(device, uiFramebuffers[i], nullptr);
     }
-
+    
     for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-        vkDestroyImageView(device, swapChainImageViews[i], nullptr);
+      vkDestroyImageView(device, swapChainImageViews[i], nullptr);
     }
-
+    
     vkDestroySwapchainKHR(device, swapChain, nullptr);
   }
-
+ 
+  
   void updateUniformBuffer(uint32_t currentImage) {
     static auto startTime = std::chrono::high_resolution_clock::now();
     
@@ -815,7 +960,7 @@ private:
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
     
     UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
     ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
     ubo.proj[1][1] *= -1;
@@ -840,7 +985,7 @@ private:
     }
 
 
-    updateUniformBuffer(currentFrame);    
+    //updateUniformBuffer(currentFrame);    
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
     
     
@@ -902,22 +1047,6 @@ private:
     } else if (result != VK_SUCCESS) {
       throw std::runtime_error("failed to present swap chain image!");
     }
-
-
-    /*
-    
-    ImDrawData* draw_data = ImGui::GetDrawData();
-    const bool is_minimized = (draw_data->DisplaySize.x <= 0.0f || draw_data->DisplaySize.y <= 0.0f);
-    if (!is_minimized)
-    {
-    	g_MainWindowData.ClearValue.color.float32[0] = clear_color.x * clear_color.w;
-    	g_MainWindowData.ClearValue.color.float32[1] = clear_color.y * clear_color.w;
-    	g_MainWindowData.ClearValue.color.float32[2] = clear_color.z * clear_color.w;
-    	g_MainWindowData.ClearValue.color.float32[3] = clear_color.w;
-	FrameRender(&g_MainWindowData, draw_data);
-	FramePresent(&g_MainWindowData);
-    }
-    */
     
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
   }
@@ -957,7 +1086,6 @@ private:
 
     std::array<VkClearValue, 1> clearValues{};
     clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
-    //
     VkRenderPassBeginInfo uiRenderPassInfo{};
     uiRenderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     uiRenderPassInfo.renderPass = uiRenderPass;
@@ -974,7 +1102,6 @@ private:
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 
     vkCmdEndRenderPass(commandBuffer);
-    //
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
       throw std::runtime_error("failed to record command buffer!");
     }
@@ -1031,7 +1158,6 @@ private:
     
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
     //vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-    
     //vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
     
@@ -1123,9 +1249,6 @@ private:
       if (vkCreateFramebuffer(device, &uiFramebufferInfo, nullptr, &uiFramebuffers[i]) != VK_SUCCESS) {
 	throw std::runtime_error("failed to create framebuffer!");
       }
-      
-
-      
     }
     
 	
@@ -1905,17 +2028,26 @@ private:
 
 int main() {
 
+
+  /*
+  double p0[2] = {0.0,0.0};
+  double p1[2] = {1.0,0.0};
+  double p2[2] = {1.0,-1.0};
   
-    HelloTriangleApplication app;
+  std::cout << GEO::PCK::orient_2d(p0,p1,p2) << "\n";
 
-    try {
-        app.run();
-    } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
-        return EXIT_FAILURE;
-    }
-
-    return EXIT_SUCCESS;
+  return 0;
+  */
+  HelloTriangleApplication app;
+  
+  try {
+    app.run();
+  } catch (const std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return EXIT_FAILURE;
+  }
+  
+  return EXIT_SUCCESS;
 }
 
 
