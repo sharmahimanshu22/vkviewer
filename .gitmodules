@@ -19,3 +19,6 @@
 [submodule "deps/geogram"]
 	path = deps/geogram
 	url = https://github.com/BrunoLevy/geogram.git
+[submodule "deps/IndirectPredicates"]
+	path = deps/IndirectPredicates
+	url = https://github.com/MarcoAttene/Indirect_Predicates.git

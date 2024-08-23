@@ -15,6 +15,9 @@ namespace vkview {
 
   DataForGPU loadModel(const std::string model_path);
 
+  DataForGPU loadSTL(const std::string filename);
+
+  DataForGPU loadDelaunay();
 }
 
 #endif

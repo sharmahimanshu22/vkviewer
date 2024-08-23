@@ -1,5 +1,8 @@
 #include "_vulkan.h"
 
+#include "implicit_point.h"
+
+#include "Predicates_psm.h"
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -27,10 +30,12 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 
-#include <geogram/numerics/predicates.h>
+#include "widgets/widgets.h"
 
-const uint32_t WIDTH = 1600;
-const uint32_t HEIGHT = 1200;
+//#include <geogram/numerics/predicates.h>
+
+const uint32_t WIDTH = 1800;
+const uint32_t HEIGHT = 1400;
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector<const char*> validationLayers = {
@@ -99,6 +104,7 @@ public:
     void run() {
         initWindow();
         initVulkan();
+	init_imgui();
         mainLoop();
         cleanup();
     }
@@ -171,10 +177,8 @@ private:
   VkDeviceMemory textureImageMemory;
   VkImageView textureImageView;
   VkSampler textureSampler;
-
   
   uint32_t currentFrame = 0;
-
 
   std::vector<vkview::Vertex> vertices;
   std::vector<uint32_t> indices;
@@ -184,6 +188,8 @@ private:
   bool dragged = false;
   UniformBufferObject ubo;
   glm::vec2 mousePos;
+
+
   
   void initWindow() {
     glfwInit();
@@ -199,14 +205,20 @@ private:
     set_cursor_position_callback();
     set_mouse_button_callback();
     set_cursor_enter_callback();
+    set_scroll_callback();
   }
 
-  void updateUBO(glm::vec2 delta) {
+  void updateUBOZoom(double xoffset, double yoffset) {
 
-    glm::mat4 transform = ubo.view;
-    transform = glm::rotate(transform, -delta[0]/300, glm::vec3(0.0f, 1.0f, 0.0f));
-    transform = glm::rotate(transform, -delta[1]/300, glm::vec3(1.0f, 0.0f, 0.0f));
-    ubo.view = transform;
+    
+  }
+  
+  void updateUBODrag(glm::vec2 delta) {
+
+    glm::mat4 transform = ubo.model;
+    transform = glm::rotate(transform, -delta[0]/300, glm::vec3(1.0f, 1.0f, 0.0f));
+    transform = glm::rotate(transform, -delta[1]/300, glm::vec3(0.0f, 1.0f, 1.0f));
+    ubo.model = transform;
   }
 
   static void mouse_button_callback(GLFWwindow* w, int button, int action, int mods)
@@ -218,39 +230,17 @@ private:
     auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(w));
     
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-      //mousePos = glm::vec2(xpos,ypos);
       app->dragged = true;
-      std::cout << "all done in pressed\n";
     }
     
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
-      //glm::vec2 delta = glm::vec2(xpos - this->mousePos[0], ypos - this->mousePos[1]);
-      //this->view.trackball(delta);
-      //mousePos = glm::vec2(xpos, ypos);
       app->dragged = false;
-      std::cout << "all done in release\n";
     }    
   }
 
 
   
   void set_mouse_button_callback() {
-
-    /*
-    typedef void (HelloTriangleApplication::*Fun) (int button, int action, int mods, double xpos, double ypos);
-    Fun func = &HelloTriangleApplication::mouse_button_callback;
-    //    MyGLWindow<Fun,OpenGLWindow> *gw = new MyGLWindow(func, this);
-    glfwSetWindowUserPointer(window, this);
-
-
-    auto mouse_button_callback_lambda = [](GLFWwindow* w, int button, int action, int mods)
-					{
-					  double xpos, ypos;
-					  glfwGetCursorPos(w, &xpos, &ypos);
-					  static_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(w))
-					    ->mouse_button_callback(button, action, mods, xpos, ypos);
-					};
-    */
     glfwSetWindowUserPointer(window, this);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
   }
@@ -260,42 +250,28 @@ private:
   {
     if (entered)
       {
-        // The cursor entered the content area of the window
-	//this->cursor_in_window = true;
-	//std::cout << "cursor in window set true \n";
       }
     else
       {
-        // The cursor left the content area of the window
-	//this->cursor_in_window = false;
-	//std::cout << "cursor in window set false \n";
     }
   }
 
   
   void set_cursor_enter_callback() {
 
-    /*
-    typedef void (HelloTriangleApplication::*Fun) (int entered);
-    Fun func = &HelloTriangleApplication::cursor_enter_callback;
-    glfwSetWindowUserPointer(window, this);
-
-
-    auto cursor_enter_callback_lambda = [](GLFWwindow* w, int entered)
-    {
-      // can be used to check from where cursor entered
-      //      double xpos, ypos;
-      //glfwGetCursorPos(w, &xpos, &ypos);
-      //cout << xpos << ypos << "here\n";
-      static_cast<HelloTriangleApplication *>(glfwGetWindowUserPointer(w))->cursor_enter_callback(entered);
-
-      //static_cast<MyGLWindow<Fun,HelloTriangleApplication> *>(glfwGetWindowUserPointer(w))->cursor_enter_callback(entered);
-    };
-    */
     glfwSetWindowUserPointer(window, this);
     glfwSetCursorEnterCallback(window, cursor_enter_callback);
   }
+
+
+  static void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+    std::cout << "scroll detected\n";
+  }
   
+  void set_scroll_callback() {
+    glfwSetWindowUserPointer(window, this);
+    glfwSetScrollCallback(window, scroll_callback);
+  }
 
   static void cursor_position_callback(GLFWwindow* w, double xpos, double ypos)
   {
@@ -305,7 +281,7 @@ private:
     if(app->dragged) {
       glm::vec2 delta = glm::vec2(xpos - app->mousePos[0], ypos - app->mousePos[1]);
       app->mousePos = glm::vec2(xpos, ypos);
-      app->updateUBO(delta);
+      app->updateUBODrag(delta);
     }
     app->mousePos = glm::vec2(xpos, ypos);
     
@@ -317,22 +293,6 @@ private:
     glfwSetWindowUserPointer(window, this);
     glfwSetCursorPosCallback(window, cursor_position_callback);
 
-    /*
-    
-    typedef void (HelloTriangleApplication::*Fun) (double xpos, double ypos);
-    Fun func = &HelloTriangleApplication::cursor_position_callback;
-    glfwSetWindowUserPointer(window, this);
-
-    auto cursor_position_callback_lambda = [](GLFWwindow* w, double xpos, double ypos)
-    {
-      //static_cast<MyGLWindow<Fun,OpenGLWindow> *>(glfwGetWindowUserPointer(w))->cursor_position_callback(xpos,ypos);
-
-      static_cast<HelloTriangleApplication *>(glfwGetWindowUserPointer(w))->cursor_position_callback(xpos,ypos);
-
-    };
-    
-    glfwSetCursorPosCallback(window, cursor_position_callback_lambda);
-    */
   }
 
   
@@ -346,26 +306,40 @@ private:
     createLogicalDevice();
     createSwapChain();
     createImageViews();
-    createRenderPass();
+    createCommandPool();
+
+    // UI
     createUIRenderPass();
+    createUICommandBuffer();
+
+
+    // for each model loaded as it might have model specific parameters to be used in graphiics pipeline
+    createRenderPass();
     createDescriptorSetLayout();
     createGraphicsPipeline();
-    createCommandPool();
     createDepthResources();
     createFramebuffers(); // this also creates uiFrameBuffers
     createTextureImage();
     createTextureImageView();
     createTextureSampler();
+    createDescriptorPool();
+    createUniformBuffers();
+    createDescriptorSets();
+    createCommandBuffer();
+
+    createSyncObjects();
+    loadScene();
+  }
+
+  void loadVerticesAndIndices(  std::vector<vkview::Vertex> vs,  std::vector<uint32_t> ids) {
+    vertices = vs;
+    indices = ids;
+  }
+
+  void loadScene() {
     loadModel();
     createVertexBuffer();
     createIndexBuffer();
-    createUniformBuffers();
-    createDescriptorPool();
-    createDescriptorSets();
-    createCommandBuffer();
-    createUICommandBuffer();
-    createSyncObjects();
-    init_imgui();
   }
 
 
@@ -409,11 +383,43 @@ private:
   }
   
 
+  void loadEmptyModel() {
+    vertices = {};  
+  }
 
   void loadModel() {
-    vkview::DataForGPU dfg = vkview::loadModel("models/viking_room.obj");
+    //vkview::DataForGPU dfg = vkview::loadSTL("/Users/sharmh15/projectsPersonal/Thingi10K/raw_meshes/40509.stl");
+    //vertices = dfg.vertices;
+    //indices = dfg.indices;
+
+    /*
+    vertices = {
+      {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+      {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+      {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+      {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
+      
+      {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+      {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+      {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+      {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
+    };
+    indices = {
+      0, 1, 2, 2, 3, 0,
+      4, 5, 6, 6, 7, 4
+    };
+    */
+
+    vkview::DataForGPU dfg = vkview::loadDelaunay();
     vertices = dfg.vertices;
     indices = dfg.indices;
+
+    //for (int i = 0; i < 9; i++) {
+    //std::cout << indices[i] << " " << i << "  \n";
+    //std::cout << vertices[indices[i]].pos.x << " "  << vertices[indices[i]].pos.y << " " << vertices[indices[i]].pos.z<< "\n";
+    //}
+    std::cout << vertices.size() << "  vertices size\n";
+    std::cout << indices.size() << "  indices size\n";    
   }
   
   void createDepthResources() {
@@ -690,15 +696,15 @@ private:
   void createDescriptorPool() {
     std::array<VkDescriptorPoolSize, 2> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = static_cast<uint32_t>(100*MAX_FRAMES_IN_FLIGHT);
+    poolSizes[0].descriptorCount = static_cast<uint32_t>(2*MAX_FRAMES_IN_FLIGHT);
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(100*MAX_FRAMES_IN_FLIGHT);
+    poolSizes[1].descriptorCount = static_cast<uint32_t>(2*MAX_FRAMES_IN_FLIGHT);
     
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(100*MAX_FRAMES_IN_FLIGHT);
+    poolInfo.maxSets = static_cast<uint32_t>(2*MAX_FRAMES_IN_FLIGHT);
     poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     
     if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
@@ -762,8 +768,9 @@ private:
     uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
 
     ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
+    //ubo.view = glm::lookAt(glm::vec3(-100.0f, -100.0f, 15.0f), glm::vec3(0.0f, 0.0f, 15.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.view = glm::lookAt(glm::vec3(-10.0f, -10.0f, -10.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, -9.9f, 10.0f);
     ubo.proj[1][1] *= -1;
     
 
@@ -807,6 +814,9 @@ private:
 
   
   void createIndexBuffer() {
+    if (indices.size() == 0) {
+      return;
+    }
     VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
     
     VkBuffer stagingBuffer;
@@ -829,6 +839,10 @@ private:
 
   
   void createVertexBuffer() {
+    if (vertices.size() == 0) {
+      return;
+    }
+    
     VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
     
     VkBuffer stagingBuffer;
@@ -965,30 +979,21 @@ private:
  
   
   void updateUniformBuffer(uint32_t currentImage) {
-
-    /*
-    static auto startTime = std::chrono::high_resolution_clock::now();
-    
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-    
-    UniformBufferObject ubo{};
-    ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 0.1f, 10.0f);
-    ubo.proj[1][1] *= -1;
-    */
     
     memcpy(uniformBuffersMapped[currentImage], &ubo, sizeof(ubo));
   }
 
+
+  void setupImgui() {
+    setupwidgets();
+  }
   
   void drawFrame() {
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-    
+
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
       recreateSwapChain();
       ImGui_ImplVulkan_SetMinImageCount(swapChainImageViews.size());
@@ -1002,13 +1007,13 @@ private:
     updateUniformBuffer(currentFrame);    
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
     
-    
     bool show_demo_window = true;
     ImVec4 clear_color = ImVec4(0.45f, 0.1f, 0.10f, 1.00f);
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
-    ImGui::ShowDemoWindow(&show_demo_window);
+    setupImgui();
+    //ImGui::ShowDemoWindow(&show_demo_window);
     ImGui::Render();
 
     vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
@@ -1164,10 +1169,12 @@ private:
     VkBuffer vertexBuffers[] = {vertexBuffer};
     VkDeviceSize offsets[] = {0};
 
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-    
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
+    if(vertices.size() > 0) {
+      vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+      vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+    }
+    
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
     
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
@@ -1417,7 +1424,7 @@ private:
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.depthClampEnable = VK_FALSE;
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
@@ -2040,18 +2047,25 @@ private:
     }
 };
 
+
+
+#include "voronoi3d.h"
+
 int main() {
 
 
-  /*
+  
   double p0[2] = {0.0,0.0};
   double p1[2] = {1.0,0.0};
   double p2[2] = {1.0,-1.0};
   
   std::cout << GEO::PCK::orient_2d(p0,p1,p2) << "\n";
 
-  return 0;
-  */
+  //generateDelaunayTest();
+  //vkview::loadSTL("/Users/sharmh15/projectsPersonal/Thingi10K/raw_meshes/242237.stl");
+  
+  //return 0;
+  
   HelloTriangleApplication app;
   
   try {

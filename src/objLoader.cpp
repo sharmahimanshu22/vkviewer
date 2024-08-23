@@ -1,5 +1,5 @@
 #include "objLoader.h"
-
+#include "utils.h"
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj_loader.h>
 
@@ -8,9 +8,11 @@
 #include <glm/gtx/hash.hpp>
 #include <iostream>
 
+#include <openstl/core/stl.h>
+#include "voronoi3d.h"
 
 namespace vkview {
-  
+      
   DataForGPU loadModel(const std::string model_path) {
     tinyobj::attrib_t attrib;
     std::vector<tinyobj::shape_t> shapes;
@@ -55,5 +57,126 @@ namespace vkview {
     return dataForGPU;
   }
 
+
+
+  DataForGPU loadSTL(std::string filename) {
+
+    std::ifstream file(filename, std::ios::binary);
+    if (!file.is_open()) {
+      std::cerr << "Error: Unable to open file '" << filename << "'" << std::endl;
+    }
+    
+    // Deserialize the triangles in either binary or ASCII format
+    std::vector<openstl::Triangle> triangles = openstl::deserializeStl(file);
+    file.close();
+
+    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+    DataForGPU dataForGPU{};
+
+    const auto& [vertices, faces] = convertToVerticesAndFaces(triangles);
+
+    //std::cout << vertices.size() << "  vertices size\n";
+    //std::cout << faces.size() << "  faces size\n";
+
+    int j = 0;
+    double xmax = -10000.0;
+    double ymax = -10000.0;
+    double zmax = -10000.0;
+    double xmin = 10000.0;
+    double ymin = 10000.0;
+    double zmin = 10000.0;
+    for(const auto& f : faces) {
+      for(const auto& i : f) {
+
+	Vertex vertex{};
+
+	if (vertices[i].x > xmax) {
+	  xmax = vertices[i].x;
+	}
+	if (vertices[i].y > ymax) {
+	  ymax = vertices[i].y;
+	}
+	if (vertices[i].z > zmax) {
+	  zmax = vertices[i].z;
+	}
+	if(vertices[i].x < xmin) {
+	  xmin = vertices[i].x;
+	}
+	if(vertices[i].y < ymin) {
+	  ymin = vertices[i].y;
+	}
+	if(vertices[i].z < zmin) {
+	  zmin = vertices[i].z;
+	}
+
+	// Assuming that the mesh is triangular.
+	vertex.pos = {vertices[i].x, vertices[i].y, vertices[i].z};
+	vertex.color = {1.0f, 0.0f, 0.0f};
+	vertex.texCoord = {0.0f,0.0f};
+	
+	if (uniqueVertices.count(vertex) == 0) {
+	  uniqueVertices[vertex] = static_cast<uint32_t>(dataForGPU.vertices.size());
+	  dataForGPU.vertices.push_back(vertex);
+	}
+	
+	dataForGPU.indices.push_back(uniqueVertices[vertex]);
+      }
+    }
+    std::cout << "maxmin\n" << xmax << " " << ymax << " " << zmax << "\n";
+    std::cout << "maxmin\n" << xmin << " " << ymin << " " << zmin << "\n";
+
+    std::cout << dataForGPU.indices.size() << " " << dataForGPU.vertices.size() << "  dataGPU\n";
+
+    
+    return dataForGPU;
+  }
+
+
+
+  DataForGPU loadDelaunay() {
+
+    Delaunay del = generateDelaunayTest();
+        
+    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+    DataForGPU dataForGPU{};
+    
+    Vertex vertex{};
+    glm::dvec3 pt;
+    bool boundary = false;
+    int j = 0;
+    for(const glm::uvec4& tet : del.tetrahedra) {
+      
+      uint32_t triangleIdxList[12]  = {tet[1],tet[2],tet[3],tet[0], tet[3], tet[2], tet[3],tet[0],tet[1],tet[1], tet[0], tet[2]};
+      for(int j = 0; j < 12; j++) {
+	if (triangleIdxList[j] < 8) {
+	  boundary = true;
+	  break;
+	}
+      }
+
+      if (boundary) {
+	boundary = false;
+	continue;
+      }
+
+      for(int i = 0 ; i < 12; i++) {
+	std::cout << triangleIdxList[i] << "," ;
+	pt = del.points[triangleIdxList[i]];
+	vertex.pos = {pt.x , pt.y, pt.z};
+	vertex.color = {1.0f, 0.0f, 0.0f};
+	vertex.texCoord = {0.0f,0.0f};
+	
+	if (uniqueVertices.count(vertex) == 0) {
+	  uniqueVertices[vertex] = static_cast<uint32_t>(dataForGPU.vertices.size());
+	  dataForGPU.vertices.push_back(vertex);
+	}
+	dataForGPU.indices.push_back(uniqueVertices[vertex]);
+      }
+      std::cout << "\n";
+    }
+
+    std::cout << dataForGPU.indices.size() << " " << dataForGPU.vertices.size() << "  dataGPU\n";
+    return dataForGPU;
+  }
 
 }
