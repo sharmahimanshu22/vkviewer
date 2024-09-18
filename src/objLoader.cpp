@@ -10,6 +10,7 @@
 
 #include <openstl/core/stl.h>
 #include "voronoi3d.h"
+#include "point3d.h"
 
 namespace vkview {
       
@@ -133,30 +134,31 @@ namespace vkview {
 
 
 
-  DataForGPU loadDelaunay() {
+  DataForGPU loadDelaunay2() {
 
-    Delaunay del = generateDelaunayTest();
+    Delaunay del = *(generateDelaunayTest());
         
     std::unordered_map<Vertex, uint32_t> uniqueVertices{};
     DataForGPU dataForGPU{};
     
     Vertex vertex{};
-    glm::dvec3 pt;
+    Point3d pt;
     bool boundary = false;
     int j = 0;
     for(const glm::uvec4& tet : del.tetrahedra) {
-      
+
+      std::cout << " new tetrahedra\n";
       uint32_t triangleIdxList[12]  = {tet[1],tet[2],tet[3],tet[0], tet[3], tet[2], tet[3],tet[0],tet[1],tet[1], tet[0], tet[2]};
       for(int j = 0; j < 12; j++) {
-	if (triangleIdxList[j] < 8) {
-	  boundary = true;
-	  break;
-	}
+      if (triangleIdxList[j] < 8) {
+        boundary = true;
+        break;
+      }
       }
 
       if (boundary) {
-	boundary = false;
-	continue;
+      	boundary = false;
+      continue;
       }
 
       for(int i = 0 ; i < 12; i++) {
@@ -179,4 +181,53 @@ namespace vkview {
     return dataForGPU;
   }
 
+  DataForGPU loadDelaunay() {
+
+
+    Delaunay del = *(generateDelaunayTest());
+        
+    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
+    DataForGPU dataForGPU{};
+    
+    Vertex vertex{};
+    Point3d pt;
+    bool boundary = false;
+    int j = 0;
+    for(const glm::uvec4& tet : del.tetrahedra) {
+
+      //std::cout << " new tetrahedra\n";
+      uint32_t triangleIdxList[12]  = {tet[1],tet[2],tet[3],tet[0], tet[3], tet[2], tet[3],tet[0],tet[1],tet[1], tet[0], tet[2]};
+
+      bool ghost = false;
+      for(int i = 0; i < 12; i++) {
+	pt = del.points[triangleIdxList[i]];
+	if(pt.x < -99 || pt.y < -99 || pt.z < -99 || pt.x > 99 || pt.y > 99 || pt.z > 99) {
+	  ghost = true;
+	}
+      }
+      if(ghost) {
+	ghost = false;
+	continue;
+      }
+      
+      std::cout << "adding tetrahedra\n";
+      for(int i = 0 ; i < 12; i++) {
+	//std::cout << triangleIdxList[i] << "," ;
+	pt = del.points[triangleIdxList[i]];
+	vertex.pos = {pt.x , pt.y, pt.z};
+	vertex.color = {1.0f, 0.0f, 0.0f};
+	vertex.texCoord = {0.0f,0.0f};
+	
+	if (uniqueVertices.count(vertex) == 0) {
+	  uniqueVertices[vertex] = static_cast<uint32_t>(dataForGPU.vertices.size());
+	  dataForGPU.vertices.push_back(vertex);
+	}
+	dataForGPU.indices.push_back(uniqueVertices[vertex]);
+      }
+      //std::cout << "\n";
+    }
+
+    std::cout << dataForGPU.indices.size() << " " << dataForGPU.vertices.size() << "  dataGPU\n";
+    return dataForGPU;
+  }
 }

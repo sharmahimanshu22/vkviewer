@@ -1,6 +1,6 @@
 #include "utils.h"
 
-std::vector<glm::dvec3> generate3dPoints(int n, double xmin, double xmax, double ymin, double ymax,  double zmin, double zmax) {
+std::vector<Point3d> generate3dPoints(int n, double xmin, double xmax, double ymin, double ymax,  double zmin, double zmax) {
 
   std::vector<double> vecOfRandomNumsX(n);
   std::vector<double> vecOfRandomNumsY(n);
@@ -8,7 +8,7 @@ std::vector<glm::dvec3> generate3dPoints(int n, double xmin, double xmax, double
   
   srand(0);
   
-  std::vector<glm::dvec3> points(n);
+  std::vector<Point3d> points(n);
   
   std::generate(vecOfRandomNumsX.begin(), vecOfRandomNumsX.end(), []()
   {
