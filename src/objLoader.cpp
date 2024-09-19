@@ -185,7 +185,6 @@ namespace vkview {
 
 
     Delaunay del = *(generateDelaunayTest());
-        
     std::unordered_map<Vertex, uint32_t> uniqueVertices{};
     DataForGPU dataForGPU{};
     
@@ -210,7 +209,6 @@ namespace vkview {
 	continue;
       }
       
-      std::cout << "adding tetrahedra\n";
       for(int i = 0 ; i < 12; i++) {
 	//std::cout << triangleIdxList[i] << "," ;
 	pt = del.points[triangleIdxList[i]];
@@ -224,10 +222,9 @@ namespace vkview {
 	}
 	dataForGPU.indices.push_back(uniqueVertices[vertex]);
       }
-      //std::cout << "\n";
     }
 
-    std::cout << dataForGPU.indices.size() << " " << dataForGPU.vertices.size() << "  dataGPU\n";
+    std::cout << "Num of vertices: " << dataForGPU.vertices.size() << " Num of Indices: " << dataForGPU.indices.size() << "  dataGPU\n";
     return dataForGPU;
   }
 }

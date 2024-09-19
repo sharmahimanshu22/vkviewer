@@ -76,5 +76,5 @@ target_sources(${PROJECT_NAME} PUBLIC ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp 
 
 
 # Final compilation and linking
-target_sources(${PROJECT_NAME} PRIVATE main.cpp src/objLoader.cpp src/Predicates_psm.cpp src/widgets/widgets.cpp src/widgets/splinewidget.cpp src/voronoi3d.cpp src/utils.cpp)
+target_sources(${PROJECT_NAME} PRIVATE main.cpp src/objLoader.cpp src/Predicates_psm.cpp src/widgets/widgets.cpp src/widgets/splinewidget.cpp src/voronoi3d.cpp src/utils.cpp src/vkviewer.cpp)
 target_link_libraries(${PROJECT_NAME} PUBLIC glfw ${GLFW_LIBRARIES} Vulkan::Vulkan glm::glm tinyobjloader openstl_core) 

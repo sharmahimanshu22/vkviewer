@@ -10,16 +10,101 @@
 #include <stack>
 #include "point3d.h"
 #include <set>
+#include "objLoader.h"
+#include "vkviewer.h"
 
 std::stack<uint32_t> emptyTetras;
 uint32_t lastIdx = 0;
+HelloTriangleApplication app;
 
 std::ostream &operator<<(std::ostream &os, Point3d const &m) {
   return os << m.x << " " << m.y << " " << m.z;
 }
 
+std::ostream &operator<<(std::ostream &os, glm::uvec4 const &m) {
+  return os << m[0] << " " << m[1] << " " << m[2] << " " << m[3];
+}
+
+std::ostream &operator<<(std::ostream &os, glm::ivec4 const &m) {
+  return os << m[0] << " " << m[1] << " " << m[2] << " " << m[3];
+}
+
+
+int draw_tetra(Delaunay* del, std::vector<uint32_t> tetIdces) {
+
+  std::unordered_map<vkview::Vertex, uint32_t> uniqueVertices{};
+  vkview::DataForGPU dataForGPU{};
+  
+  vkview::Vertex vertex{};
+  Point3d pt;
+  bool boundary = false;
+  int j = 0;
+
+  if (tetIdces.size() == 0) {
+    for(int i = 0; i < del->tetrahedra.size(); i++) {
+      tetIdces.push_back(i);
+    }
+  }
+  
+  
+  for(int i = 0; i < tetIdces.size(); i++) {
+    uint32_t tetIdx =  tetIdces[i];
+    glm::uvec4& tet = del->tetrahedra[tetIdx];
+    //for(const glm::uvec4& tet : del.tetrahedra) {
+    
+    //std::cout << " new tetrahedra\n";
+    uint32_t triangleIdxList[12]  = {tet[1],tet[2],tet[3],tet[0], tet[3], tet[2], tet[3],tet[0],tet[1],tet[1], tet[0], tet[2]};
+    
+    bool ghost = false;
+    double d = 99;
+    for(int i = 0; i < 12; i++) {
+      pt = del->points[triangleIdxList[i]];
+      if(pt.x < -d || pt.y < -d || pt.z < -d || pt.x > d || pt.y > d || pt.z > d) {
+	ghost = true;
+      }
+    }
+    ghost = false;
+    if(ghost) {
+      ghost = false;
+      continue;
+    }
+    
+    for(int i = 0 ; i < 12; i++) {
+      //std::cout << triangleIdxList[i] << "," ;
+      pt = del->points[triangleIdxList[i]];
+      vertex.pos = {pt.x , pt.y, pt.z};
+      vertex.color = {1.0f, 0.0f, 0.0f};
+      vertex.texCoord = {0.0f,0.0f};
+      
+      if (uniqueVertices.count(vertex) == 0) {
+	uniqueVertices[vertex] = static_cast<uint32_t>(dataForGPU.vertices.size());
+	dataForGPU.vertices.push_back(vertex);
+      }
+      dataForGPU.indices.push_back(uniqueVertices[vertex]);
+    }
+  }
+  
+  std::cout << "Num of vertices: " << dataForGPU.vertices.size() << " Num of Indices: " << dataForGPU.indices.size() << "  dataGPU\n";
+  //return dataForGPU;
+  try {
+    app.loadScene(dataForGPU);
+    app.run();
+  } catch (const std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+  
+}
+
+int draw_tetra(Delaunay* del) {
+  std::vector<uint32_t> emptyvector;
+  return draw_tetra(del, emptyvector);
+}
+
 std::vector<Point3d> get_points(int N) {
 
+  /*
   std::vector<Point3d> points(4);
   
   Point3d p1 = {-1.0, -1.0, -1.0};
@@ -34,8 +119,10 @@ std::vector<Point3d> get_points(int N) {
   points[2] = p3;
   points[3] = p4;
   //points[4] = p5;
+  */
   
-  //std::vector<Point3d> points = generate3dPoints(N, -2.0, 2.0, -2.0, 2.0, -2.0, 2.0);
+  std::vector<Point3d> points = generate3dPoints(N, -2.0, 2.0, -2.0, 2.0, -2.0, 2.0);
+
   // If we want it sorted by z axis
   //std::vector<glm::vec3> sortedPoints =
   //  std::sort(points.begin(), points.end(), [](const vec_3d_t& lhs, const vec_3d_t& rhs) {
@@ -79,15 +166,15 @@ uint32_t find_local_from_global(Delaunay* del, uint32_t tetIdx, uint32_t idx) {
 }
 
 uint32_t add_tetra(Delaunay* del, glm::uvec4& tet) {
-  if(emptyTetras.empty()) {
-    del->tetrahedra.push_back(tet);
-    return del->tetrahedra.size()-1;
-  } else {
-    uint32_t idx = emptyTetras.top();
-    emptyTetras.pop();
-    del->tetrahedra[idx] = tet;
-    return idx;
-  }
+  //  if(emptyTetras.empty()) {
+  del->tetrahedra.push_back(tet);
+  return del->tetrahedra.size()-1;
+  //} else {
+  //uint32_t idx = emptyTetras.top();
+  //emptyTetras.pop();
+  //del->tetrahedra[idx] = tet;
+  //return idx;
+  //}
 }
 
 // will not work for a degenerate case where two vertices have same global index
@@ -153,10 +240,11 @@ void initialize_delaunay_naive(std::vector<Point3d>& points, Delaunay* del) {
   del->points.resize(points.size()+4);
   std::copy(points.begin(), points.end(), del->points.begin()+4);
 
-  del->points[0] = {-5.0, -5.0, -5.0};
-  del->points[1] = {5.0, -5.0, -5.0};
-  del->points[2] = {0.0, 5.0, -5.0};
-  del->points[3] = {0.0,0.0, 5.0};
+  double d = 100;
+  del->points[0] = {-d, -d, -d};
+  del->points[1] = {d, -d, -d};
+  del->points[2] = {0.0, d, -d};
+  del->points[3] = {0.0,0.0, d};
 
   glm::uvec4 tet0(0,1,2,3);
 
@@ -243,7 +331,6 @@ void flip32(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3,
     newTet2 = glm::ivec4(pIdxGlobal, tet2[lTet2], tet2[commonVtxTet2], dIdxGlobal);
     newTet2AdjIdces = glm::uvec4(tet2AdjIdces[kTet2], tetIdx1, tet3AdjIdces[kTet3], tet1AdjIdces[kTet1]);
   }
-
   
   del->tetrahedra[tetIdx1] = newTet1;
   del->tetrahedra[tetIdx2] = newTet2; 
@@ -355,7 +442,8 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
   // updating adjacency info of new tetrahedra
   del->tetToTets[idx1] = glm::ivec4(del->tetToTets[tetIdx2][idx3_in_tet2], idx2, idx3, del->tetToTets[tetIdx1][3] );
   del->tetToTets[idx2] = glm::ivec4(del->tetToTets[tetIdx2][idx1_in_tet2], idx3, idx1, del->tetToTets[tetIdx1][1] );
-  del->tetToTets[idx3] = glm::ivec4(del->tetToTets[tetIdx2][idx2_in_tet2], idx1, idx2, del->tetToTets[tetIdx1][2] );
+  glm::ivec4 adjNewTet3(del->tetToTets[tetIdx2][idx2_in_tet2], idx1, idx2, del->tetToTets[tetIdx1][2] );
+  del->tetToTets.push_back(adjNewTet3);
 
 
   // updating adjency info for tetras adjacent to first tetra  
@@ -387,7 +475,7 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
   }
   
   // updating adjacency info for tetras adjacent to second tetra
-  uint32_t tet2Adj_1_idx = del->tetToTets[tetIdx1][idx1_in_tet2];
+  uint32_t tet2Adj_1_idx = del->tetToTets[tetIdx2][idx1_in_tet2];
   if(tet2Adj_1_idx != -1) { 
     for(int j = 0; j < 4; j++) {
       if(del->tetToTets[tet2Adj_1_idx][j] == tetIdx2) {
@@ -396,7 +484,7 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
     }
   }
 
-  uint32_t tet2Adj_2_idx = del->tetToTets[tetIdx1][idx2_in_tet2];
+  uint32_t tet2Adj_2_idx = del->tetToTets[tetIdx2][idx2_in_tet2];
   if(tet2Adj_2_idx != -1) { 
     for(int j = 0; j < 4; j++) {
       if(del->tetToTets[tet2Adj_2_idx][j] == tetIdx2) {
@@ -405,7 +493,7 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
     }
   }
 
-  uint32_t tet2Adj_3_idx = del->tetToTets[tetIdx1][idx3_in_tet2];
+  uint32_t tet2Adj_3_idx = del->tetToTets[tetIdx2][idx3_in_tet2];
   if(tet2Adj_3_idx != -1) { 
     for(int j = 0; j < 4; j++) {
       if(del->tetToTets[tet2Adj_3_idx][j] == tetIdx2) {
@@ -557,44 +645,47 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
   uint32_t k = jkl[1];
   uint32_t l = jkl[2];
 
-  uint32_t j1 = find_local_from_global(del, tet1Idx, tet2[j]);
-  uint32_t k1 = find_local_from_global(del, tet1Idx, tet2[k]);
-  uint32_t l1 = find_local_from_global(del, tet1Idx, tet2[l]);
+  uint32_t jTet1 = find_local_from_global(del, tet1Idx, tet2[j]);
+  uint32_t kTet1 = find_local_from_global(del, tet1Idx, tet2[k]);
+  uint32_t lTet1 = find_local_from_global(del, tet1Idx, tet2[l]);
 
-  std::cout << ortn[0] << " " << ortn[1] << " " << ortn[2] << " " << ortn[3] << " ortn\n" ;
+  //std::cout << ortn[0] << " " << ortn[1] << " " << ortn[2] << " " << ortn[3] << " ortn\n" ;
 
   //ortn[i]  <= 0 and all other orientation is positive. one face visible
   // case 1
   if (ortn[i] <= 0 && ortn[j] == 1 && ortn[k] == 1 && ortn[l] == 1) {
     // only one face is visible that is ith face
     flip23(del, tet1Idx, tet2Idx, idx1, idx2);
-    std::cout << "DID WE FLIP ????????????????????\n";
+    //std::cout << "DID WE FLIP ????????????????????\n";
   }
 
-  /*
+  
 
   //ortn[i]  <= 0 and only one other orientation is negative. 2 faces visible
   // case 2
   if(ortn[i] <= 0 && ortn[j] == -1 && ortn[k] == 1 && ortn[l] == 1) {
     uint32_t tet2Adj_j = del->tetToTets[tet2Idx][j];
-    uint32_t tet1Adj_j = del->tetToTets[tet1Idx][j];
+    uint32_t tet1Adj_j = del->tetToTets[tet1Idx][jTet1];
     if(tet1Adj_j != -1 && tet2Adj_j == tet1Adj_j ) {
-      flip32(del, tet1Idx, tet2Idx, tet1Adj_j, idx1, idx2, j, k, l);
+      //flip32(del, tet1Idx, tet2Idx, tet1Adj_j, idx1, idx2, j, k, l);
+      //std::cout << "DID WE FLIP 32????????????????????\n";  
     }
     //i and j are visible
   }
   if(ortn[i] <= 0 && ortn[j] == 1 && ortn[k] == -1 && ortn[l] == 1) {
     uint32_t tet2Adj_k = del->tetToTets[tet2Idx][k];
-    uint32_t tet1Adj_k = del->tetToTets[tet1Idx][k];
+    uint32_t tet1Adj_k = del->tetToTets[tet1Idx][kTet1];
     if(tet1Adj_k != -1 && tet2Adj_k == tet1Adj_k ) {
-      flip32(del, tet1Idx, tet2Idx, tet1Adj_k, idx1, idx2, k, j, l);
+      //flip32(del, tet1Idx, tet2Idx, tet1Adj_k, idx1, idx2, k, j, l);
+      //std::cout << "DID WE FLIP 3222????????????????????\n"; 
     }
   }
   if(ortn[i] <= 0 && ortn[j] == 1 && ortn[k] == 1 && ortn[l] == -1) {
     uint32_t tet2Adj_l = del->tetToTets[tet2Idx][l];
-    uint32_t tet1Adj_l = del->tetToTets[tet1Idx][l];
+    uint32_t tet1Adj_l = del->tetToTets[tet1Idx][lTet1];
     if(tet1Adj_l != -1 && tet2Adj_l == tet1Adj_l ) {
-      flip32(del, tet1Idx, tet2Idx, tet1Adj_l, idx1, idx2, l, j, k);
+      //flip32(del, tet1Idx, tet2Idx, tet1Adj_l, idx1, idx2, l, j, k);
+      //std::cout << "DID WE FLIP 3233????????????????????\n"; 
     }
   }
 
@@ -677,7 +768,7 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
     }
   }
 
-  */
+  
 }
 
 
@@ -751,7 +842,7 @@ void flip14(Delaunay* del, uint32_t tetIdx, uint32_t ptIdx, std::stack<uint32_t>
   
   lastIdx = oppAIdx;
 
-  std::cout <<  del->points[ptIdx] << " " << del->points[tet[0]] << " " << del->points[tet[1]] << " " << del->points[tet[2]] << " " << del->points[tet[3]] << " flip14\n";
+  //std::cout <<  del->points[ptIdx] << " " << del->points[tet[0]] << " " << del->points[tet[1]] << " " << del->points[tet[2]] << " " << del->points[tet[3]] << " flip14\n";
   
 }
 
@@ -812,15 +903,27 @@ uint32_t locate(Delaunay* delptr, const Point3d& point, int startTetIdx, uint32_
     //startTetIdx = rand() % (del.tetrahedra.size());
   }
   
-  int tetIdx = startTetIdx;
+  uint32_t tetIdx = startTetIdx;
   int res;
   uint32_t count = 0;
+
+  std::vector<uint32_t> tetIdxStack;
+  
   while(true) {
+    tetIdxStack.push_back(tetIdx);
     if(count >= del.tetrahedra.size()) {
+      for (int i = 0; i < tetIdxStack.size(); i++) {
+	std::cout << tetIdxStack[i] << " ";
+      }
+      std::cout << "\n";
+      std::cout << point.x << " " << point.y << " " << point.z << " " << tetIdx << " "  << del.tetrahedra.size() << " " <<  del.tetToTets.size() << " : here\n";
+      std::cout << del.tetrahedra[11] << " " << del.tetrahedra[12] << " " << del.tetrahedra[13] << "    the alternating tets\n";
+      std::vector<uint32_t> tettodraw = {11};
+      draw_tetra(delptr, tettodraw);
       throw std::runtime_error("while loop more than size of delaunay\n");
     }
     if(tetIdx < 0 || tetIdx >= del.tetrahedra.size()) {
-      std::cout << point.x << " " << point.y << " " << point.z << " " << tetIdx << " : here\n";
+      std::cout << point.x << " " << point.y << " " << point.z << " " << tetIdx << " "  << del.tetrahedra.size() << " " <<  del.tetToTets.size() << " : here\n";
       throw std::runtime_error("\ntetIdx is not in limits\n");
     }
     count++;
@@ -833,9 +936,9 @@ uint32_t locate(Delaunay* delptr, const Point3d& point, int startTetIdx, uint32_
     double vtx2[3] = {del.points[tet[2]].x, del.points[tet[2]].y, del.points[tet[2]].z};
     double vtx3[3] = {del.points[tet[3]].x, del.points[tet[3]].y, del.points[tet[3]].z};
     degenerateCase = 0;
-
     res = GEO::PCK::orient_3d(pt,vtx1,vtx2,vtx3);
     if(res < 0) {
+      std::cout << tetIdx << " I think this1\n";
       tetIdx = del.tetToTets[tetIdx][0];
       continue;
     }
@@ -845,6 +948,7 @@ uint32_t locate(Delaunay* delptr, const Point3d& point, int startTetIdx, uint32_
     
     res = GEO::PCK::orient_3d(vtx0, pt, vtx2, vtx3);
     if(res < 0) {
+      std::cout << tetIdx << " I think this\n";
       tetIdx = del.tetToTets[tetIdx][1];
       continue;
     }
@@ -854,6 +958,7 @@ uint32_t locate(Delaunay* delptr, const Point3d& point, int startTetIdx, uint32_
     
     res = GEO::PCK::orient_3d(vtx0, vtx1, pt, vtx3);
     if(res < 0) {
+      std::cout << tetIdx << " I think this2\n";
       tetIdx = del.tetToTets[tetIdx][2];
       continue;
     }
@@ -863,6 +968,7 @@ uint32_t locate(Delaunay* delptr, const Point3d& point, int startTetIdx, uint32_
     
     res = GEO::PCK::orient_3d(vtx0, vtx1, vtx2, pt);
     if(res < 0) {
+      std::cout << tetIdx << " I think this3\n";
       tetIdx = del.tetToTets[tetIdx][3];
       continue;
     }
@@ -875,7 +981,7 @@ uint32_t locate(Delaunay* delptr, const Point3d& point, int startTetIdx, uint32_
 }
 
 
-bool insideTetra(Delaunay* del, uint32_t tetIdx, Point3d& p) {
+bool assert_inside_tetra(Delaunay* del, uint32_t tetIdx, Point3d& p) {
   glm::uvec4 tet = del->tetrahedra[tetIdx];
   Point3d p0 = del->points[tet[0]];
   Point3d p1 = del->points[tet[1]];
@@ -893,10 +999,12 @@ bool insideTetra(Delaunay* del, uint32_t tetIdx, Point3d& p) {
 
 void insert_point(Delaunay* del, uint32_t ptIdx, std::stack<uint32_t>& stack) {
   uint32_t degenerateCase;
-  uint32_t tetIdx = locate(del, del->points[ptIdx], -1, degenerateCase);
 
-  bool success = insideTetra(del, tetIdx, del->points[ptIdx]);
-  std::cout << "success: " << success << " " << degenerateCase  << " " << tetIdx << " " << del->tetrahedra.size() <<"\n";
+  uint32_t tetIdx = locate(del, del->points[ptIdx], -1, degenerateCase);
+  //std::cout << "Point added: " << del->points[ptIdx] << " " << tetIdx << "\n";
+  
+  assert_inside_tetra(del, tetIdx, del->points[ptIdx]);
+  //std::cout << "success: " << success << " " << degenerateCase  << " " << tetIdx << " " << del->tetrahedra.size() <<"\n";
   
   assert(tetIdx >= 0 && tetIdx < del->tetrahedra.size());
 
@@ -912,7 +1020,7 @@ Delaunay* generateDelaunay(std::vector<Point3d>  points) {
   Delaunay* del = new Delaunay();
   initialize_delaunay_naive(points, del);
   std::stack<uint32_t> stack;
-  for(int i = 4; i < 6; i++) { //del->points.size(); i++) {
+  for(int i = 4; i < 9; i++) { //del->points.size(); i++) {
     insert_point(del, i, stack);
   }
   return del;
@@ -921,9 +1029,23 @@ Delaunay* generateDelaunay(std::vector<Point3d>  points) {
 Delaunay* generateDelaunayTest() {
   std::vector<Point3d> points = get_points(50);
   Delaunay* del = generateDelaunay(points);
+  //draw_tetra(del);
   return del;
 }
 
+
+int do_delaunay() {
+
+  try {
+    app.initialize();
+  }
+  catch (const std::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return EXIT_FAILURE;
+  }
+  generateDelaunayTest();
+  
+}
 
 
 

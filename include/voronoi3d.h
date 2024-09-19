@@ -12,5 +12,6 @@ struct Delaunay {
 
 Delaunay* generateDelaunayTest();
 
+int do_delaunay();
 
 #endif
