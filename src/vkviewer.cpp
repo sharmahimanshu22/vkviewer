@@ -17,7 +17,7 @@
 #include "objLoader.h"
 #include "openstl/core/stl.h"
 #define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+//#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -33,6 +33,11 @@
 #include "widgets/widgets.h"
 
 //#include <geogram/numerics/predicates.h>
+
+std::ostream &operator<<(std::ostream &os, glm::mat4 const &m);
+//{
+//  return os << m[0][0] << " " << m[0][1] << " " << m[0][2] << " " << m[0][3] << "\n" << m[1][0] << " " << m[1][1] << " " << m[1][2] << " " << m[1][3] << "\n"  << m[2][0] << " " << m[2][1] << " " << m[2][2] << " " << m[2][3] << "\n" << m[3][0] << " " << m[3][1] << " " << m[3][2] << " " << m[3][3] ;
+//}
 
 
 static void check_vk_result(VkResult err)
@@ -97,8 +102,35 @@ void HelloTriangleApplication::initWindow() {
   set_scroll_callback();
 }
 
-void HelloTriangleApplication::updateUBOZoom(double xoffset, double yoffset) {
+void HelloTriangleApplication::updateUBOZoom(double xoffset, double yoffset, double xpos, double ypos) {
+
+  float x = (2.0f * xpos) / WIDTH - 1.0f;
+  float y = 1.0f -(2.0f * ypos) / HEIGHT ;
   
+  glm::vec4 ray_ndc = glm::vec4(x, y,-1.0f, 1.0f);
+  glm::vec4 ray_clip = glm::vec4(ray_ndc.x, ray_ndc.y, 0.0, 1.0);
+
+  glm::mat4 proj_inverse = glm::inverse(ubo.proj);
+  glm::vec4 ray_eye_cursor = proj_inverse*ray_clip;
+  //ray_eye = glm::vec4(ray_eye_cursor.x, ray_eye_cursor.y, ray_eye_cursor.z, 1.0);  
+  
+  glm::mat4 view_inverse = glm::inverse(ubo.view);
+  glm::vec3 ray_wor_cursor = view_inverse * ray_eye_cursor;
+
+  glm::vec4 ray_eye_center = proj_inverse*glm::vec4(0.0,0.0,0.0,1.0);
+  glm::vec3 ray_wor_center = glm::vec3(view_inverse*ray_eye_center);
+
+  glm::vec3 raydiff = ray_wor_cursor-ray_wor_center;
+  
+  float scaleF = 1.0f + yoffset*0.01;
+  
+  glm::mat4 transform = ubo.model;
+
+  transform = glm::translate(transform, raydiff);
+  transform = glm::scale(transform, glm::vec3(scaleF, scaleF, scaleF));
+  transform = glm::translate(transform, -raydiff);
+  ubo.model = transform;
+
   
 }
 
@@ -110,16 +142,41 @@ void HelloTriangleApplication::updateUBODrag(glm::vec2 delta) {
   ubo.model = transform;
 }
 
+
+void HelloTriangleApplication::mouse_button_print(double xpos, double ypos) {
+
+  float x = (2.0f * xpos) / WIDTH - 1.0f;
+  float y = 1.0f -(2.0f * ypos) / HEIGHT ;
+  
+  glm::vec4 ray_ndc = glm::vec4(x, y,-1.0f, 1.0f);
+  glm::vec4 ray_clip = glm::vec4(ray_ndc.x, ray_ndc.y, -1.0, 1.0);
+
+  glm::mat4 proj_inverse = glm::inverse(ubo.proj);
+  glm::vec4 ray_eye = proj_inverse*ray_clip;
+  ray_eye = glm::vec4(ray_eye.x, ray_eye.y, ray_eye.z, 1.0);  
+  
+  glm::mat4 view_inverse = glm::inverse(ubo.view);
+  glm::vec3 ray_wor_cursor = view_inverse * ray_eye;
+  glm::vec3 ray_wor_center = glm::vec3(view_inverse*glm::vec4(0.0,0.0,-1.0, 1.0));
+
+  glm::vec3 raydiff = ray_wor_center-ray_wor_cursor;
+  raydiff = glm::normalize(raydiff);
+  raydiff = raydiff*0.05f;
+
+
+}
+
 void HelloTriangleApplication::mouse_button_callback(GLFWwindow* w, int button, int action, int mods)
 {
   
   double xpos, ypos;
   glfwGetCursorPos(w, &xpos, &ypos);
-  
+
   auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(w));
   
   if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
     app->dragged = true;
+    app->mouse_button_print(xpos, ypos);
   }
   
   if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
@@ -152,8 +209,13 @@ void HelloTriangleApplication::set_cursor_enter_callback() {
 }
 
 
-void HelloTriangleApplication::scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
-  std::cout << "scroll detected\n";
+void HelloTriangleApplication::scroll_callback(GLFWwindow* w, double xoffset, double yoffset) {
+  double xpos, ypos;
+  glfwGetCursorPos(w, &xpos, &ypos);
+
+  auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(w));
+
+  app->updateUBOZoom(xoffset, yoffset, xpos, ypos);
 }
 
 void HelloTriangleApplication::set_scroll_callback() {
@@ -163,7 +225,6 @@ void HelloTriangleApplication::set_scroll_callback() {
 
 void HelloTriangleApplication::cursor_position_callback(GLFWwindow* w, double xpos, double ypos)
 {
-  //std::cout << xpos << "," << ypos << " :cursor position without press\n";
   auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(w));
   
   if(app->dragged) {
@@ -291,10 +352,6 @@ void HelloTriangleApplication::loadModel(const vkview::DataForGPU& dfg) {
   vertices = dfg.vertices;
   indices = dfg.indices;
   
-  //for (int i = 0; i < 9; i++) {
-  //std::cout << indices[i] << " " << i << "  \n";
-  //std::cout << vertices[indices[i]].pos.x << " "  << vertices[indices[i]].pos.y << " " << vertices[indices[i]].pos.z<< "\n";
-  //}
 }
 
 void HelloTriangleApplication::createDepthResources() {
@@ -635,19 +692,22 @@ void HelloTriangleApplication::createDescriptorSets() {
   
 }
 
+
+
 void HelloTriangleApplication::createUniformBuffers() {
   VkDeviceSize bufferSize = sizeof(UniformBufferObject);
   
   uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
   uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
   uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
-  
-  ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+  ubo.model = glm::mat4(1.0f);
+  //ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
   //ubo.view = glm::lookAt(glm::vec3(-100.0f, -100.0f, 15.0f), glm::vec3(0.0f, 0.0f, 15.0f), glm::vec3(0.0f, 0.0f, 1.0f));
   ubo.view = glm::lookAt(glm::vec3(-10.0f, -10.0f, -10.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-  ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, -9.9f, 10.0f);
+  ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 1.0f, 100.0f);
   ubo.proj[1][1] *= -1;
-  
+
   
   
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -818,6 +878,7 @@ void HelloTriangleApplication::framebufferResizeCallback(GLFWwindow* window, int
 
 
 void HelloTriangleApplication::recreateSwapChain() {
+
   int width = 0, height = 0;
   while (width == 0 || height == 0) {
     glfwGetFramebufferSize(window, &width, &height);
@@ -878,7 +939,6 @@ void HelloTriangleApplication::drawFrame() {
     throw std::runtime_error("failed to acquire swap chain image!");
   }
   
-  
   updateUniformBuffer(currentFrame);    
   vkResetFences(device, 1, &inFlightFences[currentFrame]);
   
@@ -896,7 +956,6 @@ void HelloTriangleApplication::drawFrame() {
   
   recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
   recordUICommandBuffer(uiCommandBuffers[currentFrame], imageIndex);
-  
   
   std::array<VkCommandBuffer, 2> submitCommandBuffers = { commandBuffers[currentFrame], uiCommandBuffers[currentFrame] };
   
@@ -1016,7 +1075,7 @@ void HelloTriangleApplication::recordCommandBuffer(VkCommandBuffer commandBuffer
   renderPassInfo.renderArea.extent = swapChainExtent;
   
   std::array<VkClearValue, 2> clearValues{};
-  clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+  clearValues[0].color = {{1.0f, 1.0f, 1.0f, 1.0f}};
   clearValues[1].depthStencil = {1.0f, 0};
   
   renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
@@ -1245,8 +1304,6 @@ void HelloTriangleApplication::createRenderPass() {
     if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
       throw std::runtime_error("failed to create render pass!");
     }
-    
-    
 }
   
 void HelloTriangleApplication::createGraphicsPipeline() {
@@ -1296,7 +1353,7 @@ void HelloTriangleApplication::createGraphicsPipeline() {
     rasterizer.rasterizerDiscardEnable = VK_FALSE;
     rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
     rasterizer.lineWidth = 1.0f;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.cullMode = VK_CULL_MODE_NONE;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     
@@ -1350,7 +1407,6 @@ void HelloTriangleApplication::createGraphicsPipeline() {
     if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
       throw std::runtime_error("failed to create pipeline layout!");
     }
-    
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -1373,10 +1429,8 @@ void HelloTriangleApplication::createGraphicsPipeline() {
       throw std::runtime_error("failed to create graphics pipeline!");
     }
     
-    
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
-
     
 }
 
@@ -1470,6 +1524,7 @@ void HelloTriangleApplication::createSwapChain() {
     
     swapChainImageFormat = surfaceFormat.format;
     swapChainExtent = extent;
+
 }
   
   
@@ -1518,22 +1573,22 @@ VkPresentModeKHR HelloTriangleApplication::chooseSwapPresentMode(const std::vect
 
 
 VkExtent2D HelloTriangleApplication::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
-    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
-        return capabilities.currentExtent;
-    } else {
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-
-        VkExtent2D actualExtent = {
-            static_cast<uint32_t>(width),
-            static_cast<uint32_t>(height)
-        };
-
-        actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
-
-        return actualExtent;
-    }
+  if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+    return capabilities.currentExtent;
+  } else {
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+    
+    VkExtent2D actualExtent = {
+      static_cast<uint32_t>(width),
+      static_cast<uint32_t>(height)
+    };
+    
+    actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+    actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+    
+    return actualExtent;
+  }
 }
   
   
@@ -1559,35 +1614,37 @@ void HelloTriangleApplication::createLogicalDevice() {
       queueCreateInfos.push_back(queueCreateInfo);
     }
  
-      
-      VkPhysicalDeviceFeatures deviceFeatures{};
-      deviceFeatures.samplerAnisotropy = VK_TRUE;
-      
-      VkDeviceCreateInfo createInfo{};
-      createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-      
-      createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());;
-      createInfo.pQueueCreateInfos = queueCreateInfos.data();
-      
-      createInfo.pEnabledFeatures = &deviceFeatures;
-      
-      createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-      createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-      
-      if (enableValidationLayers) {
-	createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-	createInfo.ppEnabledLayerNames = validationLayers.data();
-      } else {
-	createInfo.enabledLayerCount = 0;
-      }
-      
-      if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
-	throw std::runtime_error("failed to create logical device!");
-      }
-      
-      vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
-      vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+    VkPhysicalDeviceFeatures deviceFeatures{};
+    deviceFeatures.samplerAnisotropy = VK_TRUE;
+    //deviceFeatures.tessellationShader = true;
+    //deviceFeatures.geometryShader = true;
+    deviceFeatures.fillModeNonSolid = VK_TRUE;
+
+    VkDeviceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    
+    createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());;
+    createInfo.pQueueCreateInfos = queueCreateInfos.data();
+    
+    createInfo.pEnabledFeatures = &deviceFeatures;
+    
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    
+    if (enableValidationLayers) {
+      createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+      createInfo.ppEnabledLayerNames = validationLayers.data();
+    } else {
+      createInfo.enabledLayerCount = 0;
     }
+    
+    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create logical device!");
+    }
+    
+    vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
+    vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+}
 
 void HelloTriangleApplication::mainLoop() {
         while (!glfwWindowShouldClose(window)) {
@@ -1661,10 +1718,6 @@ void HelloTriangleApplication::createInstance() {
       std::vector<VkExtensionProperties> extensionss(extensionCount);
       vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensionss.data());
       
-      //std::cout << "available extensions:\n";
-      //for (const auto& extension : extensionss) {
-      //	std::cout << '\t' << extension.extensionName << " extensions\n";
-      //}
 
  
       if (enableValidationLayers && !checkValidationLayerSupport()) {
@@ -1768,7 +1821,8 @@ bool HelloTriangleApplication::isDeviceSuitable(VkPhysicalDevice device) {
   VkPhysicalDeviceFeatures supportedFeatures;
   vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
   
-  return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
+  return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy
+    && supportedFeatures.fillModeNonSolid;
 }
 
 bool HelloTriangleApplication::checkDeviceExtensionSupport(VkPhysicalDevice device) {
@@ -1780,9 +1834,6 @@ bool HelloTriangleApplication::checkDeviceExtensionSupport(VkPhysicalDevice devi
   
   std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
   
-  //for (const auto& extension : availableExtensions) {
-  // std::cout << extension.extensionName << " available extension of physical device\n";
-  //}
   
   for (const auto& extension : availableExtensions) {
     requiredExtensions.erase(extension.extensionName);
@@ -1884,9 +1935,6 @@ bool HelloTriangleApplication::checkValidationLayerSupport() {
   std::vector<VkLayerProperties> availableLayers(layerCount);
   vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
   
-  //for(auto e : availableLayers) {
-  //std::cout << e.layerName << " available layers\n";
-  //}
   
   for (const char* layerName : validationLayers) {
     bool layerFound = false;
