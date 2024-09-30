@@ -13,7 +13,7 @@
 #include "objLoader.h"
 #include "vkviewer.h"
 
-std::stack<uint32_t> emptyTetras;
+std::set<uint32_t> emptyTetras;
 uint32_t lastIdx = 0;
 HelloTriangleApplication app;
 
@@ -103,7 +103,7 @@ int add_tetras_to_render(Delaunay* del, std::vector<uint32_t> tetIdces, vkview::
     }
   }
   
-  
+  int k = 0;
   for(int i = 0; i < tetIdces.size(); i++) {
     
     uint32_t tetIdx =  tetIdces[i];
@@ -117,10 +117,10 @@ int add_tetras_to_render(Delaunay* del, std::vector<uint32_t> tetIdces, vkview::
     for(int i = 0; i < 12; i++) {
       pt = del->points[triangleIdxList[i]];
       if(pt.x < -d || pt.y < -d || pt.z < -d || pt.x > d || pt.y > d || pt.z > d) {
-	ghost = true;
+	      ghost = true;
       }
     }
-    ghost = false;
+    //ghost = false;
     if(ghost) {
       ghost = false;
       continue;
@@ -129,11 +129,13 @@ int add_tetras_to_render(Delaunay* del, std::vector<uint32_t> tetIdces, vkview::
       pt = del->points[triangleIdxList[j]];
       vertex.pos = {pt.x , pt.y, pt.z};
       vertex.color = colors[i%3];
+      k++;
+      //std::cout << "color k " << k%3 << "\n";
       vertex.texCoord = {0.0f,0.0f};
       
       if (uniqueVertices.count(vertex) == 0) {
-	uniqueVertices[vertex] = static_cast<uint32_t>(dataForGPU.vertices.size());
-	dataForGPU.vertices.push_back(vertex);
+	      uniqueVertices[vertex] = static_cast<uint32_t>(dataForGPU.vertices.size());
+	      dataForGPU.vertices.push_back(vertex);
       }
       dataForGPU.indices.push_back(uniqueVertices[vertex]);
     }
@@ -157,7 +159,15 @@ int draw(vkview::DataForGPU& dataForGPU) {
   
 }
 
-void draw_tetra_and_point(Delaunay* del, std::vector<uint32_t> tetIdces, const Point3d& p) {
+void draw_tetras_and_point(Delaunay* del, const Point3d& p) {
+  vkview::DataForGPU dataForGPU{};
+  std::vector<uint32_t> emptyvector;
+  add_tetras_to_render(del, emptyvector, dataForGPU);
+  add_point_to_render(p, 0.05, dataForGPU);
+  draw(dataForGPU);
+}
+
+void draw_tetras_and_point(Delaunay* del, std::vector<uint32_t> tetIdces, const Point3d& p) {
   vkview::DataForGPU dataForGPU{};
   add_tetras_to_render(del, tetIdces, dataForGPU);
   add_point_to_render(p, 0.05, dataForGPU);
@@ -235,19 +245,19 @@ uint32_t find_local_from_global(Delaunay* del, uint32_t tetIdx, uint32_t idx) {
       return i;
     }
   }
-  throw std::runtime_error(" global not found in local \n"); ;
+  throw std::runtime_error(" global not found in local \n");
 }
 
 uint32_t add_tetra(Delaunay* del, glm::uvec4& tet) {
-  //  if(emptyTetras.empty()) {
-  del->tetrahedra.push_back(tet);
-  return del->tetrahedra.size()-1;
-  //} else {
-  //uint32_t idx = emptyTetras.top();
-  //emptyTetras.pop();
-  //del->tetrahedra[idx] = tet;
-  //return idx;
-  //}
+  if(emptyTetras.empty()) {
+    del->tetrahedra.push_back(tet);
+    return del->tetrahedra.size()-1;
+  } else {
+    uint32_t idx = *emptyTetras.begin();
+    emptyTetras.erase(emptyTetras.begin());
+    del->tetrahedra[idx] = tet;
+    return idx;
+  }
 }
 
 // will not work for a degenerate case where two vertices have same global index
@@ -262,27 +272,36 @@ uint32_t get_local_vtx_idx_opp_to_face(glm::uvec4 tet, uint32_t v1, uint32_t v2,
   throw std::runtime_error("the face supplied is not \n");
 }
 
-
+void printTet(glm::uvec4 tet) {
+  std::cout << tet[0] << " " << tet[1] << " " << tet[2] <<  " " << tet[3] << "\n";
+}
 
 void assert_consistency(Delaunay* del) {
 
   assert(del->tetrahedra.size() == del->tetToTets.size());
   
   for(int tetIdx = 0; tetIdx < del->tetrahedra.size(); tetIdx++) {
+    if (emptyTetras.find(tetIdx) != emptyTetras.end()) {
+      continue;
+    }
     for(int j = 0; j < 4; j++) {
       int adjIdx = del->tetToTets[tetIdx][j];
       assert (adjIdx != tetIdx);
 
       if(adjIdx == -1) {
-	continue;
+	      continue;
       }
       glm::uvec4 tet = del->tetrahedra[tetIdx];
       glm::uvec4 adjTet = del->tetrahedra[adjIdx];
 
       std::set<uint32_t> common;
       for (int k = 0; k < 4; k++) {
-	common.insert(tet[k]);
-	common.insert(adjTet[k]);
+        if(tetIdx == 18) {
+          std::cout << "break\n";
+        }
+        assert(adjTet[k] != tet[j]);
+	      common.insert(tet[k]);
+	      common.insert(adjTet[k]);
       }
       //std::cout << " consistency check tet " << tetIdx << " " << adjIdx << "\n" << tet << " and " << adjTet << "\n";
       //for(uint32_t s : common) {
@@ -377,13 +396,7 @@ int get_orientation_wrt_tetra_with_replacement(Delaunay* del, const uint32_t tet
   assert(replaceIdx >= 0 && replaceIdx <=3);
   glm::uvec4 tet = del->tetrahedra[tetIdx];
   Point3d parr[4] = {del->points[tet[0]],del->points[tet[1]],del->points[tet[2]],del->points[tet[3]]};
-
-  for(int i = 0; i < 4; i++) {
-    if(i == replaceIdx) {
-      parr[i] = p;
-    }
-  }
-
+  parr[replaceIdx] = p;
   return orient_3d(parr[0], parr[1], parr[2], parr[3]);
   
 }
@@ -395,8 +408,22 @@ bool assert_flip32() {
 }
 
 void flip32(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3, uint32_t pIdxTet1, uint32_t dIdxTet2,
-	    uint32_t commonVtxTet2, uint32_t kTet2, uint32_t lTet2) {
+	    uint32_t commonVtxTet2, uint32_t kTet2, uint32_t lTet2, std::stack<uint32_t>& stack) {
+/*
+  std::cout << "performing flip 32 on \n";
+  std::cout << tetIdx1 << ": ";
+  printTet(del->tetrahedra[tetIdx1]);
+  std::cout << " & " << tetIdx2 << ": ";
+  printTet(del->tetrahedra[tetIdx2]);
+  std::cout << " & " << tetIdx3 << ": ";;
+  printTet(del->tetrahedra[tetIdx3]);
+  std::cout << "\n";
+  */
 
+
+
+  std::vector<uint32_t> ttd = {5,0,6};
+  //draw_tetra(del,ttd);
   int pIdxGlobal = del->tetrahedra[tetIdx1][pIdxTet1]; // pidxlocal should be 0
   int dIdxGlobal = del->tetrahedra[tetIdx2][dIdxTet2];
   
@@ -413,10 +440,10 @@ void flip32(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3,
   glm::ivec4 newTet1AdjIdces;
   glm::ivec4 newTet2AdjIdces;
   
-  uint32_t kTet1 = find_local_from_global(del, tetIdx1, kTet2);
-  uint32_t kTet3 = find_local_from_global(del, tetIdx3, kTet2);
-  uint32_t lTet1 = find_local_from_global(del, tetIdx1, lTet2);
-  uint32_t lTet3 = find_local_from_global(del, tetIdx3, lTet2);
+  uint32_t kTet1 = find_local_from_global(del, tetIdx1, del->tetrahedra[tetIdx2][kTet2]);
+  uint32_t kTet3 = find_local_from_global(del, tetIdx3, del->tetrahedra[tetIdx2][kTet2]);
+  uint32_t lTet1 = find_local_from_global(del, tetIdx1, del->tetrahedra[tetIdx2][lTet2]);
+  uint32_t lTet3 = find_local_from_global(del, tetIdx3, del->tetrahedra[tetIdx2][lTet2]);
 
   int res;
 
@@ -430,51 +457,84 @@ void flip32(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3,
     newTet1AdjIdces = glm::uvec4(tet2AdjIdces[lTet2], tetIdx2, tet3AdjIdces[lTet3], tet1AdjIdces[lTet1]);
   }
 
+
   // newTet2
   res = orient_3d(del->points[pIdxGlobal],del->points[tet2[commonVtxTet2]],del->points[tet2[lTet2]],del->points[dIdxGlobal]);
   if(res >= 0) {
     newTet2 = glm::ivec4(pIdxGlobal, tet2[commonVtxTet2], tet2[lTet2], dIdxGlobal);
-    newTet1AdjIdces = glm::uvec4(tet2AdjIdces[kTet2], tet3AdjIdces[kTet3], tetIdx1,  tet1AdjIdces[kTet1]);
+    newTet2AdjIdces = glm::uvec4(tet2AdjIdces[kTet2], tet3AdjIdces[kTet3], tetIdx1,  tet1AdjIdces[kTet1]);
   } else {
     newTet2 = glm::ivec4(pIdxGlobal, tet2[lTet2], tet2[commonVtxTet2], dIdxGlobal);
     newTet2AdjIdces = glm::uvec4(tet2AdjIdces[kTet2], tetIdx1, tet3AdjIdces[kTet3], tet1AdjIdces[kTet1]);
   }
-  
+
+
+
   del->tetrahedra[tetIdx1] = newTet1;
   del->tetrahedra[tetIdx2] = newTet2; 
   del->tetToTets[tetIdx1] = newTet1AdjIdces;
   del->tetToTets[tetIdx2] = newTet2AdjIdces;
-
-  del->tetrahedra.erase(del->tetrahedra.begin() + tetIdx3);
-  del->tetToTets.erase(del->tetToTets.begin() + tetIdx3);
   
+
   uint32_t oppTetToKTet1 = tet1AdjIdces[kTet1];
   //  uint32_t oppTetToLTet1 = del->tetrahedra[tet1AdjIdces[lTet1]];
-  for(int i = 0; i < 4; i++) {
-    if(del->tetToTets[oppTetToKTet1][i] == tetIdx1) {
-      del->tetToTets[oppTetToKTet1][i] = tetIdx2;
+  if (oppTetToKTet1 != -1) {
+    for(int i = 0; i < 4; i++) {
+      if(del->tetToTets[oppTetToKTet1][i] == tetIdx1) {
+        del->tetToTets[oppTetToKTet1][i] = tetIdx2;
+      } 
     }
   }
 
   //uint32_t oppTetToKTet2 = del->tetrahedra[tet2AdjIdces[k]];
   uint32_t oppTetToLTet2 = tet2AdjIdces[lTet2];
-  for(int i = 0; i < 4; i++) {
-    if(del->tetToTets[oppTetToLTet2][i] == tetIdx2) {
-      del->tetToTets[oppTetToLTet2][i] = tetIdx1;
+  if(oppTetToLTet2 != -1) {
+    for(int i = 0; i < 4; i++) {
+      if(del->tetToTets[oppTetToLTet2][i] == tetIdx2) {
+        del->tetToTets[oppTetToLTet2][i] = tetIdx1;
+      }
     }
   }
 
+
+
   uint32_t oppTetToKTet3 = tet3AdjIdces[kTet3];
-  uint32_t oppTetToLTet3 = tet3AdjIdces[lTet3];
-  
-  for(int i = 0; i < 4; i++) {
-    if(del->tetToTets[oppTetToKTet3][i] == tetIdx3) {
-      del->tetToTets[oppTetToKTet3][i] = tetIdx2;
-    }
-    if(del->tetToTets[oppTetToLTet3][i] == tetIdx3) {
-      del->tetToTets[oppTetToLTet3][i] = tetIdx1;
+  if(oppTetToKTet3 != -1) {
+    for(int i = 0; i < 4; i++) {
+      if(del->tetToTets[oppTetToKTet3][i] == tetIdx3) {
+        del->tetToTets[oppTetToKTet3][i] = tetIdx2;
+      }
     }
   }
+
+  uint32_t oppTetToLTet3 = tet3AdjIdces[lTet3];
+  if(oppTetToLTet3 != -1) {
+    for(int i = 0; i < 4; i++) {
+      if(del->tetToTets[oppTetToLTet3][i] == tetIdx3) {
+        del->tetToTets[oppTetToLTet3][i] = tetIdx1;
+      }
+    }
+  }
+
+  stack.push(tetIdx1);
+  stack.push(tetIdx2);;
+
+  emptyTetras.insert(tetIdx3);
+
+/*
+  std::cout << "New Tetras\n" << tetIdx1 << ": ";
+  printTet(del->tetrahedra[tetIdx1]);
+  std::cout << " & " << tetIdx2 << ": ";
+  printTet(del->tetrahedra[tetIdx2]);
+  std::cout << "\n";
+  */
+
+  //del->tetrahedra.erase(del->tetrahedra.begin() + tetIdx3);
+  //del->tetToTets.erase(del->tetToTets.begin() + tetIdx3);
+
+  //draw_tetra(del,ttd);
+
+  //assert_consistency(del);
 }
 
 
@@ -515,7 +575,16 @@ bool flip23_assert(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dI
 // tet1 should have p
 // tet2 should have d
 // localIdx1 should always be 0 for now
-void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2) {
+void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2, std::stack<uint32_t>& stack) {
+
+/*
+  std::cout << "performing flip 23 on \n";
+  std::cout << tetIdx1 << ": ";
+  printTet(del->tetrahedra[tetIdx1]);
+  std::cout << " & " << tetIdx2 << ": ";
+  printTet(del->tetrahedra[tetIdx2]);
+  std::cout << "\n";
+  */
 
   //std::cout << "flip23 start\n";
   //std::cout << "Two tetras: " << tetIdx1 << " " << tetIdx2 << "\n";
@@ -556,7 +625,9 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
   del->tetToTets[idx1] = glm::ivec4(tet2Adj[idx3_in_tet2], idx2, idx3, tet1Adj[3] );
   del->tetToTets[idx2] = glm::ivec4(tet2Adj[idx1_in_tet2], idx3, idx1, tet1Adj[1] );
   glm::ivec4 adjNewTet3(tet2Adj[idx2_in_tet2], idx1, idx2, tet1Adj[2] );
-  del->tetToTets.resize(del->tetToTets.size() + 1);
+  if (idx3 == del->tetToTets.size()) {
+    del->tetToTets.resize(del->tetToTets.size() + 1);
+  }
   del->tetToTets[idx3] = adjNewTet3;
 
   //std::cout << "New Tets :\n" << del->tetrahedra[tetIdx1] << "\n" << del->tetrahedra[tetIdx2] << "\n" << del->tetrahedra[idx3] << "\n";
@@ -572,7 +643,7 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
   if(tet1Adj_1_idx != -1) {
     for(int j = 0; j < 4; j++) {
       if(del->tetToTets[tet1Adj_1_idx][j] == tetIdx1) {
-	del->tetToTets[tet1Adj_1_idx][j] = idx2;
+	      del->tetToTets[tet1Adj_1_idx][j] = idx2;
       }
     }
   }
@@ -581,7 +652,7 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
   if(tet1Adj_2_idx != -1) { 
     for(int j = 0; j < 4; j++) {
       if(del->tetToTets[tet1Adj_2_idx][j] == tetIdx1) {
-	del->tetToTets[tet1Adj_2_idx][j] = idx3;
+	      del->tetToTets[tet1Adj_2_idx][j] = idx3;
       }
     }
   }
@@ -591,7 +662,7 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
   if(tet1Adj_3_idx != -1) { 
     for(int j = 0; j < 4; j++) {
       if(del->tetToTets[tet1Adj_3_idx][j] == tetIdx1) {
-	del->tetToTets[tet1Adj_3_idx][j] = idx1;
+	      del->tetToTets[tet1Adj_3_idx][j] = idx1;
       }
     }
   }
@@ -601,7 +672,7 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
   if(tet2Adj_1_idx != -1) { 
     for(int j = 0; j < 4; j++) {
       if(del->tetToTets[tet2Adj_1_idx][j] == tetIdx2) {
-	del->tetToTets[tet2Adj_1_idx][j] = idx2;
+	      del->tetToTets[tet2Adj_1_idx][j] = idx2;
       }
     }
   }
@@ -610,7 +681,7 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
   if(tet2Adj_2_idx != -1) { 
     for(int j = 0; j < 4; j++) {
       if(del->tetToTets[tet2Adj_2_idx][j] == tetIdx2) {
-	del->tetToTets[tet2Adj_2_idx][j] = idx3;
+	      del->tetToTets[tet2Adj_2_idx][j] = idx3;
       }
     }
   }
@@ -619,20 +690,37 @@ void flip23(Delaunay* del, int tetIdx1, int tetIdx2, int pIdxTet1, int dIdxTet2)
   if(tet2Adj_3_idx != -1) { 
     for(int j = 0; j < 4; j++) {
       if(del->tetToTets[tet2Adj_3_idx][j] == tetIdx2) {
-	del->tetToTets[tet2Adj_3_idx][j] = idx1;
+	      del->tetToTets[tet2Adj_3_idx][j] = idx1;
       }
     }
   }
+  
+  stack.push(idx1);
+  stack.push(idx2);
+  stack.push(idx3);
 
-  assert_consistency(del);
+/*
+  std::cout << "New Tetras\n" << idx1 << ": ";
+  printTet(del->tetrahedra[idx1]);
+  std::cout << " & " << idx2 << ": ";
+  printTet(del->tetrahedra[idx2]);
+  std::cout << " & " << idx3 << ": ";
+  printTet(del->tetrahedra[idx3]);
+  std::cout << "\n";
+  */
+  //assert_consistency(del);
   //std::cout << "flip23 finished\n\n";
 }
 
 
 
-void flip44(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3, uint32_t tetIdx4, uint32_t pIdxTet1,
-	    uint32_t dIdxTet2, uint32_t commonVtxTet2, uint32_t kTet2, uint32_t lTet2) {
 
+
+void flip44(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3, uint32_t tetIdx4, uint32_t pIdxTet1,
+	    uint32_t dIdxTet2, uint32_t commonVtxTet2, uint32_t kTet2, uint32_t lTet2, std::stack<uint32_t>& stack) {
+
+
+  //std::cout << "performing flip 44\n";
 
   // kl is the common edge
   glm::uvec4 tet1 = del->tetrahedra[tetIdx1];
@@ -707,6 +795,15 @@ void flip44(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3,
     newTet4Adjacent = glm::ivec4(oldTet4Adj[kTet4], tetIdx3, tetIdx2, oldTet3Adj[kTet3]);
   }
 
+  del->tetrahedra[tetIdx1] = newTet1;
+  del->tetrahedra[tetIdx2] = newTet2;
+  del->tetrahedra[tetIdx3] = newTet3;
+  del->tetrahedra[tetIdx4] = newTet4;
+  del->tetToTets[tetIdx1] = newTet1Adjacent;
+  del->tetToTets[tetIdx2] = newTet2Adjacent;
+  del->tetToTets[tetIdx3] = newTet3Adjacent;
+  del->tetToTets[tetIdx4] = newTet4Adjacent;
+
   uint32_t tetIdxOppToTet1K = oldTet1Adj[kTet1];
   glm::ivec4 tetIdxOppToTet1KAdj = del->tetToTets[tetIdxOppToTet1K];
   for(int i = 0; i < 4; i++) {
@@ -743,9 +840,36 @@ void flip44(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3,
     }
   }
 
+  stack.push(tetIdx1);
+  stack.push(tetIdx2);
+  stack.push(tetIdx3);
+  stack.push(tetIdx4);
+
 }
 
-void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t tet2Idx, uint32_t idx1, uint32_t idx2) {
+bool flip44_check_and_call(Delaunay* del, uint32_t tet1Idx, uint32_t tet2Idx, uint32_t pIdxTet1, uint32_t dIdxTet2, uint32_t commonVtxIdxTet2, 
+    uint32_t kTet2, uint32_t lTet2, std::stack<uint32_t>& stack) {
+  
+  glm::uvec4 tet1 = del->tetrahedra[tet1Idx];
+  glm::uvec4 tet2 = del->tetrahedra[tet2Idx];
+  uint32_t commonVtxIdxTet1 = find_local_from_global(del, tet1Idx, tet2[commonVtxIdxTet2]);
+  uint32_t tet4Idx = del->tetToTets[tet2Idx][commonVtxIdxTet2];
+  uint32_t tet3Idx = del->tetToTets[tet1Idx][commonVtxIdxTet1];
+
+  uint32_t pIdxTet3 = find_local_from_global(del, tet3Idx, tet1[pIdxTet1]);
+
+  uint32_t adjToTet3AtP = del->tetToTets[tet3Idx][pIdxTet3];
+
+  if (adjToTet3AtP == tet4Idx) {
+    flip44(del, tet1Idx, tet2Idx, tet3Idx, tet4Idx, pIdxTet1, dIdxTet2, commonVtxIdxTet2, kTet2, lTet2, stack);
+    return true;
+  }
+  else {
+    return false;
+  }
+}
+
+void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t tet2Idx, uint32_t idx1, uint32_t idx2, std::stack<uint32_t>& stack) {
   
   assert(idx1 == 0);
   glm::uvec4 tet1 = del->tetrahedra[tet1Idx];
@@ -760,6 +884,7 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
   ortn[2] = orient_3d(del->points[tet2[0]], del->points[tet2[1]], p, del->points[tet2[3]]);
   ortn[3] = orient_3d(del->points[tet2[0]], del->points[tet2[1]], del->points[tet2[2]], p);
   
+
   assert(ortn[idx2] == 0 || ortn[idx2] == -1);
 
   glm::uvec3 jkl = get_opp_face_local_idces(idx2);
@@ -777,7 +902,7 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
   // case 1
   if (ortn[i] <= 0 && ortn[j] == 1 && ortn[k] == 1 && ortn[l] == 1) {
     // only one face is visible that is ith face
-    flip23(del, tet1Idx, tet2Idx, idx1, idx2);
+    flip23(del, tet1Idx, tet2Idx, idx1, idx2, stack);
     //std::cout << "DID WE FLIP ????????????????????\n";
   }
 
@@ -789,7 +914,7 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
     uint32_t tet2Adj_j = del->tetToTets[tet2Idx][j];
     uint32_t tet1Adj_j = del->tetToTets[tet1Idx][jTet1];
     if(tet1Adj_j != -1 && tet2Adj_j == tet1Adj_j ) {
-      //flip32(del, tet1Idx, tet2Idx, tet1Adj_j, idx1, idx2, j, k, l);
+      flip32(del, tet1Idx, tet2Idx, tet1Adj_j, idx1, idx2, j, k, l, stack);
       //std::cout << "DID WE FLIP 32????????????????????\n";  
     }
     //i and j are visible
@@ -798,7 +923,7 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
     uint32_t tet2Adj_k = del->tetToTets[tet2Idx][k];
     uint32_t tet1Adj_k = del->tetToTets[tet1Idx][kTet1];
     if(tet1Adj_k != -1 && tet2Adj_k == tet1Adj_k ) {
-      //flip32(del, tet1Idx, tet2Idx, tet1Adj_k, idx1, idx2, k, j, l);
+      flip32(del, tet1Idx, tet2Idx, tet1Adj_k, idx1, idx2, k, j, l, stack);
       //std::cout << "DID WE FLIP 3222????????????????????\n"; 
     }
   }
@@ -806,11 +931,11 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
     uint32_t tet2Adj_l = del->tetToTets[tet2Idx][l];
     uint32_t tet1Adj_l = del->tetToTets[tet1Idx][lTet1];
     if(tet1Adj_l != -1 && tet2Adj_l == tet1Adj_l ) {
-      //flip32(del, tet1Idx, tet2Idx, tet1Adj_l, idx1, idx2, l, j, k);
+      flip32(del, tet1Idx, tet2Idx, tet1Adj_l, idx1, idx2, l, j, k, stack);
       //std::cout << "DID WE FLIP 3233????????????????????\n"; 
     }
   }
-
+  /*
   // three faces visible // the paper mentions not to do anything in this case;
   if(ortn[i] == -1 && ortn[j] == -1 && ortn[k] == -1 && ortn[l] == 1) {
     //i and j are visible
@@ -821,7 +946,7 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
   if(ortn[i] == -1 && ortn[j] == -1 && ortn[k] == 1 && ortn[l] == -1) {
     //i and l are visible
   }
-
+*/
 
   // degenerate cases
 
@@ -830,15 +955,15 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
 
     // case 3
     if(ortn[j] == 0 && (ortn[k] != 0 && ortn[l] != 0) ) {
-      
+      flip44_check_and_call(del, tet1Idx, tet2Idx, idx1, idx2, j, k, l, stack);
     }
     // case 3
     if(ortn[k] == 0 && (ortn[j] != 0 && ortn[l] != 0) ) {
-      
+      flip44_check_and_call(del, tet1Idx, tet2Idx, idx1, idx2, k, j, l, stack);
     }
     //case 3
     if(ortn[l] == 0 && (ortn[j] != 0 && ortn[k] != 0) ) {
-      
+      flip44_check_and_call(del, tet1Idx, tet2Idx, idx1, idx2, l, j, k, stack);
     }
 
     // umm, what to do here ?
@@ -862,15 +987,15 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
   if(ortn[i] == 0 && (ortn[j] == 0 || ortn[k] == 0 || ortn[l] == 0)) {
     // case 4
     if(ortn[j] == 0 && (ortn[k] != 0 && ortn[l] != 0) ) {
-      
+      flip23(del, tet1Idx, tet2Idx, idx1, idx2, stack);
     }
     //case 4
     if(ortn[k] == 0 && (ortn[j] != 0 && ortn[l] != 0) ) {
-      
+      flip23(del, tet1Idx, tet2Idx, idx1, idx2, stack);
     }
     //case 4
     if(ortn[l] == 0 && (ortn[j] != 0 && ortn[k] != 0) ) {
-      
+      flip23(del, tet1Idx, tet2Idx, idx1, idx2, stack);
     }
 
     // new point is common with one of vtx
@@ -889,6 +1014,7 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
       
     }
   }
+  
 
   
 }
@@ -897,6 +1023,7 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
 // return indices of four tetrahedra added
 void flip14(Delaunay* del, uint32_t tetIdx, uint32_t ptIdx, std::stack<uint32_t>& stack, uint32_t& degenerateCase) {
 
+  //std::cout << "performing flip 14\n";
   glm::uvec4 tet = del->tetrahedra[tetIdx];
   glm::ivec4 adjTetIdces = del->tetToTets[tetIdx];
   
@@ -916,14 +1043,14 @@ void flip14(Delaunay* del, uint32_t tetIdx, uint32_t ptIdx, std::stack<uint32_t>
   uint32_t oppDIdx = del->tetrahedra.size()-1;
   stack.push(oppDIdx);
  
-  glm::vec4 l(oppAIdx, oppBIdx, oppCIdx, oppDIdx);
+  glm::ivec4 l(oppAIdx, oppBIdx, oppCIdx, oppDIdx);
 
   del->tetToTets.resize(del->tetToTets.size() + 3);
   
-  del->tetToTets[oppAIdx] = glm::vec4(adjTetIdces[0], l[1], l[2], l[3]);
-  del->tetToTets[oppBIdx] = glm::vec4(adjTetIdces[1], l[0], l[3], l[2]);
-  del->tetToTets[oppCIdx] = glm::vec4(adjTetIdces[2], l[3], l[0], l[1]);
-  del->tetToTets[oppDIdx] = glm::vec4(adjTetIdces[3], l[1], l[0], l[2]);
+  del->tetToTets[oppAIdx] = glm::ivec4(adjTetIdces[0], l[1], l[2], l[3]);
+  del->tetToTets[oppBIdx] = glm::ivec4(adjTetIdces[1], l[0], l[3], l[2]);
+  del->tetToTets[oppCIdx] = glm::ivec4(adjTetIdces[2], l[3], l[0], l[1]);
+  del->tetToTets[oppDIdx] = glm::ivec4(adjTetIdces[3], l[1], l[0], l[2]);
 
   //std::cout << "flip 14\n";
   //std::cout << "Tet in which point is inserted: " << tetIdx << "\n";
@@ -931,8 +1058,6 @@ void flip14(Delaunay* del, uint32_t tetIdx, uint32_t ptIdx, std::stack<uint32_t>
   //std::cout << "Idces of new tetras: "  << oppAIdx << " " << oppBIdx << " " << oppCIdx << " " << oppDIdx << "\n";
   //std::cout << "Adjacency of new tetras\n" << del->tetToTets[oppAIdx] << "\n" << del->tetToTets[oppBIdx] << "\n" << del->tetToTets[oppCIdx]
   //<< "\n" << del->tetToTets[oppDIdx] << "\n";
-
-  
   
   int oppATetIdx = adjTetIdces[0];
   if(oppATetIdx != -1) {
@@ -974,7 +1099,7 @@ void flip14(Delaunay* del, uint32_t tetIdx, uint32_t ptIdx, std::stack<uint32_t>
 
   lastIdx = oppAIdx;
 
-  assert_consistency(del);
+  //assert_consistency(del);
   //std::cout << "flip14 finished\n\n";
   
 }
@@ -1005,7 +1130,7 @@ void flip_if_applicable_wrt_first_vertex(Delaunay* del, int tetIdx, std::stack<u
   
   glm::uvec4 adjTet = del->tetrahedra[adjTetIdx];
 
-  assert_consistency(del);
+  //assert_consistency(del);
   //std::cout << tet << " this\n";
   //std::cout << adjTet << " adjTet\n";
   
@@ -1021,13 +1146,43 @@ void flip_if_applicable_wrt_first_vertex(Delaunay* del, int tetIdx, std::stack<u
 
   int res = in_sphere_3d_SOS(vtx0, vtx1, vtx2, vtx3, z);
 
-  if (res == 1) {
+  if (res > 0 ) {
     //std::cout << " calling find case and resolve\n";
-    find_case_and_resolve(del, tetIdx, adjTetIdx, 0, adjTetOppVtxLocalIdx);
+    find_case_and_resolve(del, tetIdx, adjTetIdx, 0, adjTetOppVtxLocalIdx, stack);
   }
 }
 
+void assert_delaunay(Delaunay* del, uint32_t ptSize) {
 
+  for(uint32_t tetIdx = 0; tetIdx < del->tetrahedra.size(); tetIdx++) {
+    if(emptyTetras.find(tetIdx) != emptyTetras.end()) {
+      continue;
+    }
+    glm::uvec4 tet = del->tetrahedra[tetIdx];
+    int res = orient_3d(del->points[tet[0]], del->points[tet[1]], del->points[tet[2]], del->points[tet[3]]);
+    assert (res == 1);  
+  }
+
+  for(uint32_t tetIdx = 0; tetIdx < del->tetrahedra.size(); tetIdx++) {
+    if(emptyTetras.find(tetIdx) != emptyTetras.end()) {
+      continue;
+    }
+    glm::uvec4 tet = del->tetrahedra[tetIdx];
+    for(uint32_t pIdx = 0; pIdx <= ptSize; pIdx ++) {
+      if (pIdx == tet[0] || pIdx == tet[1] || pIdx == tet[2] || pIdx == tet[3]) {
+        continue;
+      }
+      int res = in_sphere_3d_SOS(del->points[tet[0]], del->points[tet[1]], del->points[tet[2]], del->points[tet[3]], del->points[pIdx]);
+      if(res > 0) {
+        std::cout << orient_3d(del->points[tet[0]], del->points[tet[1]], del->points[tet[2]], del->points[tet[3]]) <<"break\n";
+        std::vector<uint32_t> ttd = {tetIdx, 8};
+        //draw_tetras_and_point(del, ttd, del->points[pIdx]);
+        std::cout << "break\n";
+      }
+      assert(res != 1);
+    }
+  }
+}
 
 uint32_t locate(Delaunay* delptr, const uint32_t pointIdx, int startTetIdx, uint32_t& degenerateCase) {
   
@@ -1053,12 +1208,13 @@ uint32_t locate(Delaunay* delptr, const uint32_t pointIdx, int startTetIdx, uint
       std::cout << tetIdx << " " << del.tetrahedra[tetIdx] << " " << pointIdx << " pt idx\n";
       std::cout << del.tetToTets[tetIdx] << " adjacent tetras\n";
       for(int i = 0; i < tetIdxStack.size(); i++) {
-	std::cout << tetIdxStack[i] << " " ;
+	      std::cout << tetIdxStack[i] << " " ;
       }
       std::cout << "\n";
-      std::vector<uint32_t> tettodraw = {1360, 181, 109, 164, 2144 ,2143, 652 ,163, 162 ,106 ,107 ,2513 ,1633, 1360};
-      //std::vector<uint32_t> tettodraw = {164, 2144 };//,2143, 652 ,163, 162 ,106 ,107 ,2513 ,1633, 1360};
-      draw_tetra_and_point(delptr, tettodraw, point);
+      std::vector<uint32_t> tettodraw = {169, 630, 623, };// 264, 797, 798, 1166, 1256};
+      //std::vector<uint32_t> tettodraw = {631, 580, 629, 561, 169, 630, 623, 264, 797, 798, 1166, 1256};
+
+      draw_tetras_and_point(delptr, tettodraw, point);
       throw std::runtime_error("while loop more than size of delaunay\n");
     }
     if(tetIdx < 0 || tetIdx >= del.tetrahedra.size()) {
@@ -1147,6 +1303,9 @@ void insert_point(Delaunay* del, uint32_t ptIdx, std::stack<uint32_t>& stack) {
   while(!stack.empty()) {
     int tetIdx = stack.top();
     stack.pop();
+    if (emptyTetras.find(tetIdx) != emptyTetras.end()) {
+      continue;
+    }
     flip_if_applicable_wrt_first_vertex(del, tetIdx, stack, degenerateCase);
   }
 }
@@ -1156,21 +1315,35 @@ Delaunay* generateDelaunay(std::vector<Point3d>  points) {
   initialize_delaunay_naive(points, del);
   std::stack<uint32_t> stack;
   for(int i = 4; i < 1000; i++) { //del->points.size(); i++) {
-    //std::cout << "inserting : " << i << "\n";
+    std::cout << "inserting : " << i << "\n";
     insert_point(del, i, stack);
+    
   }
+  //assert_delaunay(del, 4999);
   return del;
 }
 
 Delaunay* generateDelaunayTest() {
-  std::vector<Point3d> points = get_points(1000);
+  std::vector<Point3d> points = get_points(5000);
   Delaunay* del = generateDelaunay(points);
-  draw_tetra(del);
+  draw_tetras_and_point(del, del->points[8]);
   return del;
 }
 
 
 int do_delaunay() {
+
+/*Point3d p0 = {1.0,0.0,0.0};
+  Point3d p1 = {0.0,1.0,0.0};
+  Point3d p2 = {0.0,0.0,1.0};
+  Point3d p3 = {-1.0,0.0,0.0};
+  Point3d p4 = {2.0,0.0,0.0};
+
+  std::cout << "in shpere test: " << in_sphere_3d_SOS(p0,p1,p2,p3, p4) << "\n"; 
+  std::cout << "in shpere test: " << in_sphere_3d_SOS(p1,p0,p2,p3, p4) << "\n"; 
+  return 0;
+  */
+  
 
   try {
     app.initialize();
@@ -1180,6 +1353,7 @@ int do_delaunay() {
     return EXIT_FAILURE;
   }
   generateDelaunayTest();
+  return EXIT_SUCCESS;
   
 }
 
