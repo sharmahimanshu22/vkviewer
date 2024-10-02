@@ -1,6 +1,6 @@
 #include "utils.h"
 
-std::vector<Point3d> generate3dPoints(int n, double xmin, double xmax, double ymin, double ymax,  double zmin, double zmax) {
+std::vector<Point3d> generate3dPoints(int n, double xmin, double xmax, double ymin, double ymax,  double zmin, double zmax, int seed) {
 
   std::vector<double> vecOfRandomNumsX(n);
   std::vector<double> vecOfRandomNumsY(n);
