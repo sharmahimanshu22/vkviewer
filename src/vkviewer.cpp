@@ -17,7 +17,7 @@
 #include "objLoader.h"
 #include "openstl/core/stl.h"
 #define GLM_FORCE_RADIANS
-//#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -102,27 +102,48 @@ void HelloTriangleApplication::initWindow() {
   set_scroll_callback();
 }
 
+glm::vec3 cameraPosition = glm::vec3(0.0f, 0.0f, 40.0f);
+glm::vec3 cameraDirection = glm::vec3(0.0f, 0.0f, -1.0f);
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+
+
 void HelloTriangleApplication::updateUBOZoom(double xoffset, double yoffset, double xpos, double ypos) {
 
-  float x = (2.0f * xpos) / WIDTH - 1.0f;
-  float y = 1.0f -(2.0f * ypos) / HEIGHT ;
+  float x = ((2.0f * xpos) / WIDTH) - 1.0f;
+  float y = ((2.0f * ypos) / HEIGHT) - 1.0f;
+  glm::mat4 proj_inverse = glm::inverse(ubo.proj);
+  glm::mat4 view_inverse = glm::inverse(ubo.view);
+  glm::mat4 model_inverse = glm::inverse(ubo.model);
   
   glm::vec4 ray_ndc = glm::vec4(x, y,-1.0f, 1.0f);
   glm::vec4 ray_clip = glm::vec4(ray_ndc.x, ray_ndc.y, 0.0, 1.0);
 
-  glm::mat4 proj_inverse = glm::inverse(ubo.proj);
   glm::vec4 ray_eye_cursor = proj_inverse*ray_clip;
+  float w = ray_eye_cursor.w;
+  //ray_eye_cursor = glm::vec4(ray_eye_cursor.x/w, ray_eye_cursor.y/w, ray_eye_cursor.z/w, 1.0f);
   //ray_eye = glm::vec4(ray_eye_cursor.x, ray_eye_cursor.y, ray_eye_cursor.z, 1.0);  
   
-  glm::mat4 view_inverse = glm::inverse(ubo.view);
-  glm::vec3 ray_wor_cursor = view_inverse * ray_eye_cursor;
-
-  glm::vec4 ray_eye_center = proj_inverse*glm::vec4(0.0,0.0,0.0,1.0);
-  glm::vec3 ray_wor_center = glm::vec3(view_inverse*ray_eye_center);
-
-  glm::vec3 raydiff = ray_wor_cursor-ray_wor_center;
+  glm::vec4 ray_wor_cursor = view_inverse * ray_eye_cursor;
+  glm::vec4 ray_model_cursor = model_inverse * ray_wor_cursor;
+  //w = ray_wor_cursor.w;
+  //ray_wor_cursor = glm::vec4(ray_wor_cursor.x/w, ray_wor_cursor.y/w, ray_wor_cursor.z/w, 1.0f);
+  //glm::vec3 cameraToCursor = ray_wor_cursor - cameraPosition;
+  //cameraToCursor = glm::normalize(cameraToCursor);
+  //float scaleF = yoffset*0.03;
+  //cameraPosition = cameraPosition + cameraToCursor*scaleF;
+  //ubo.view = glm::lookAt(cameraPosition, cameraDirection, cameraUp);
   
-  float scaleF = 1.0f + yoffset*0.01;
+  glm::vec4 ray_eye_center = proj_inverse*glm::vec4(0.0,0.0,0.0,1.0);
+  //w = ray_eye_center.w;
+  //ray_eye_center = glm::vec4(ray_eye_center.x/w, ray_eye_center.y/w, ray_eye_center.z/w, 1.0f);
+  glm::vec4 ray_wor_center = view_inverse*ray_eye_center;
+  //w = ray_wor_center.w;
+  //ray_wor_center = glm::vec4(ray_wor_center.x/w, ray_wor_center.y/w, ray_wor_center.z/w,1.0f);
+
+  
+  glm::vec3 raydiff = glm::vec3(ray_model_cursor);
+  
+  float scaleF = 1.0f + yoffset*0.001;
   
   glm::mat4 transform = ubo.model;
 
@@ -145,43 +166,67 @@ void HelloTriangleApplication::updateUBODrag(glm::vec2 delta) {
 
 void HelloTriangleApplication::mouse_button_print(double xpos, double ypos) {
 
-  float x = (2.0f * xpos) / WIDTH - 1.0f;
-  float y = 1.0f -(2.0f * ypos) / HEIGHT ;
+  float x = ((2.0f * xpos) / WIDTH) - 1.0f;
+  float y = ((2.0f * ypos) / HEIGHT) - 1.0f;
+
+  std::cout << x << " " << y << " clip coords\n";
+  //float y = 1.0f -((2.0f * ypos) / HEIGHT) ;
+  glm::mat4 proj_inverse = glm::inverse(ubo.proj);
+  glm::mat4 view_inverse = glm::inverse(ubo.view);
+  glm::mat4 model_inverse = glm::inverse(ubo.model);
   
   glm::vec4 ray_ndc = glm::vec4(x, y,-1.0f, 1.0f);
-  glm::vec4 ray_clip = glm::vec4(ray_ndc.x, ray_ndc.y, -1.0, 1.0);
+  glm::vec4 ray_clip = glm::vec4(ray_ndc.x, ray_ndc.y, 0.0, 1.0);
 
-  glm::mat4 proj_inverse = glm::inverse(ubo.proj);
-  glm::vec4 ray_eye = proj_inverse*ray_clip;
-  ray_eye = glm::vec4(ray_eye.x, ray_eye.y, ray_eye.z, 1.0);  
+  glm::vec4 ray_eye_cursor = proj_inverse*ray_clip;
+  float w = ray_eye_cursor.w;
+  //ray_eye_cursor = glm::vec4(ray_eye_cursor.x/w, ray_eye_cursor.y/w, ray_eye_cursor.z/w, 1.0f);
+  //ray_eye = glm::vec4(ray_eye_cursor.x, ray_eye_cursor.y, ray_eye_cursor.z, 1.0);  
   
-  glm::mat4 view_inverse = glm::inverse(ubo.view);
-  glm::vec3 ray_wor_cursor = view_inverse * ray_eye;
-  glm::vec3 ray_wor_center = glm::vec3(view_inverse*glm::vec4(0.0,0.0,-1.0, 1.0));
+  glm::vec4 ray_wor_cursor = view_inverse * ray_eye_cursor;
+  w = ray_wor_cursor.w;
+  ray_wor_cursor = glm::vec4(ray_wor_cursor.x/w, ray_wor_cursor.y/w, ray_wor_cursor.z/w, 1.0f);
+  glm::vec4 ray_model_cursor = model_inverse*ray_wor_cursor;
+  //glm::vec3 cameraToCursor = ray_wor_cursor - cameraPosition;
+  //cameraToCursor = glm::normalize(cameraToCursor);
+  //float scaleF = yoffset*0.03;
+  //cameraPosition = cameraPosition + cameraToCursor*scaleF;
+  //ubo.view = glm::lookAt(cameraPosition, cameraDirection, cameraUp);
+  
+  glm::vec4 ray_eye_center = proj_inverse*glm::vec4(0.0,0.0,0.0,1.0);
+  w = ray_eye_center.w;
+  ray_eye_center = glm::vec4(ray_eye_center.x/w, ray_eye_center.y/w, ray_eye_center.z/w, 1.0f);
+  glm::vec4 ray_wor_center = view_inverse*ray_eye_center;
+  w = ray_wor_center.w;
+  ray_wor_center = glm::vec4(ray_wor_center.x/w, ray_wor_center.y/w, ray_wor_center.z/w,1.0f);
 
-  glm::vec3 raydiff = ray_wor_center-ray_wor_cursor;
-  raydiff = glm::normalize(raydiff);
-  raydiff = raydiff*0.05f;
+  glm::vec3 raydiff = glm::vec3(ray_wor_cursor-ray_wor_center);
 
-
+  std::cout << ray_eye_cursor.x << " " << ray_eye_cursor.y << " "  << ray_eye_cursor.z << " " << ray_eye_cursor.w << " : mouse clicked view xy\n";
+  std::cout << ray_wor_cursor.x << " " << ray_wor_cursor.y << " "  << ray_wor_cursor.z << " " << ray_wor_cursor.w << " : mouse clicked world xy\n";
+  std::cout << ray_model_cursor.x << " " << ray_model_cursor.y << " "  << ray_model_cursor.z << " " << ray_model_cursor.w << " : mouse clicked model xy\n";
+  std::cout << raydiff.x << " " << raydiff.y << " " << raydiff.z << "   raydiff\n";
 }
 
 void HelloTriangleApplication::mouse_button_callback(GLFWwindow* w, int button, int action, int mods)
 {
-  
+
+  ImGuiIO& io = ImGui::GetIO();
+      
   double xpos, ypos;
   glfwGetCursorPos(w, &xpos, &ypos);
 
   auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(w));
-  
-  if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+    // (2) ONLY forward mouse data to your underlying app/game.
+
+  if (!io.WantCaptureMouse && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
     app->dragged = true;
     app->mouse_button_print(xpos, ypos);
   }
   
   if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
     app->dragged = false;
-  }    
+  }
 }
 
 
@@ -704,11 +749,11 @@ void HelloTriangleApplication::createUniformBuffers() {
   ubo.model = glm::mat4(1.0f);
   //ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
   //ubo.view = glm::lookAt(glm::vec3(-100.0f, -100.0f, 15.0f), glm::vec3(0.0f, 0.0f, 15.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-  ubo.view = glm::lookAt(glm::vec3(-10.0f, -10.0f, -10.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-  ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 1.0f, 100.0f);
+  //ubo.view = glm::lookAt(glm::vec3(-10.0f, -10.0f, -10.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+  ubo.view = glm::lookAt(cameraPosition, cameraDirection, cameraUp);
+  //ubo.proj = glm::perspective(glm::radians(45.0f), swapChainExtent.width / (float) swapChainExtent.height, 1.0f, 100.0f);
+  ubo.proj = glm::ortho(-30.0f,30.0f,-30.0f,30.0f,-100.0f,1000000.0f);
   ubo.proj[1][1] *= -1;
-
-  
   
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
     createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[i], uniformBuffersMemory[i]);
@@ -921,7 +966,7 @@ void HelloTriangleApplication::updateUniformBuffer(uint32_t currentImage) {
 
 
 void HelloTriangleApplication::setupImgui() {
-  setupwidgets();
+  setupwidgets(this);
 }
 
 void HelloTriangleApplication::drawFrame() {

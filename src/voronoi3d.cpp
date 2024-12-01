@@ -146,7 +146,6 @@ int add_tetras_to_render(Delaunay* del, std::vector<uint32_t> tetIdces, vkview::
 
 int draw(vkview::DataForGPU& dataForGPU) {
   
-  //return dataForGPU;
   try {
     app.loadScene(dataForGPU);
     app.run();
@@ -418,6 +417,22 @@ int get_orientation_wrt_tetra_with_replacement(Delaunay* del, const uint32_t tet
 
 
 // more serious methods hereon
+
+/*
+std::vector<uint32_t> get_neighbors(uint32_t tetIdx, uint8_t faceIdx) {
+
+  
+  std::vector<std::pair<uint32_t, uint8_t>> tetfaceidces;
+  return tetfaceidces;
+  
+}
+
+//Bowyer Watson Algorithm
+std::vector<uint32_t> all_visible(Delaunay* del, Point3d p, uint32_t tetIdx, uint32_t faceIdx) {
+  
+}
+*/
+
 bool assert_flip32() {
   return true;
 }
@@ -425,13 +440,6 @@ bool assert_flip32() {
 void flip32(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3, uint32_t pIdxTet1, uint32_t dIdxTet2,
 	    uint32_t commonVtxTet2, uint32_t kTet2, uint32_t lTet2, std::stack<uint32_t>& stack) {
 
-  //std::cout << "performing flip 32 on " << tetIdx1 << " and " << tetIdx2 << " and " << tetIdx3 << "\n";
-  
-
-
-
-  std::vector<uint32_t> ttd = {5,0,6};
-  //draw_tetra(del,ttd);
   int pIdxGlobal = del->tetrahedra[tetIdx1][pIdxTet1]; // pidxlocal should be 0
   int dIdxGlobal = del->tetrahedra[tetIdx2][dIdxTet2];
   
@@ -573,7 +581,6 @@ bool flip23_assert(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t p
 // localIdx1 should always be 0 for now
 void flip23(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t pIdxTet1, uint32_t dIdxTet2, std::stack<uint32_t>& stack) {
 
-  //std::cout << "performing flip 23 on " << tetIdx1 << " and " << tetIdx2 << " \n";
   assert(pIdxTet1 == 0);
 
   glm::uvec4 tet1 = del->tetrahedra[tetIdx1];
@@ -691,8 +698,6 @@ void flip23(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t pIdxTet1
 void flip44(Delaunay* del, uint32_t tetIdx1, uint32_t tetIdx2, uint32_t tetIdx3, uint32_t tetIdx4, uint32_t pIdxTet1,
 	    uint32_t dIdxTet2, uint32_t commonVtxTet2, uint32_t kTet2, uint32_t lTet2, std::stack<uint32_t>& stack) {
 
-
-  //std::cout << "performing flip 44 on " << tetIdx1 << " and " << tetIdx2 << " and " << tetIdx3 << " and " << tetIdx4 << "\n";
 
   // kl is the common edge
   glm::uvec4 tet1 = del->tetrahedra[tetIdx1];
@@ -1037,8 +1042,6 @@ void find_case_and_resolve(Delaunay* del, const uint32_t tet1Idx, const uint32_t
 // return indices of four tetrahedra added
 void flip14(Delaunay* del, uint32_t tetIdx, uint32_t ptIdx, std::stack<uint32_t>& stack, uint32_t& degenerateCase) {
 
-  //std::cout << "performing flip 14 at " << tetIdx << "  Mesh size is : " << del->tetrahedra.size() << "\n";
-  
   glm::uvec4 tet = del->tetrahedra[tetIdx];
   glm::ivec4 adjTetIdces = del->tetToTets[tetIdx];
   
@@ -1108,10 +1111,6 @@ void flip14(Delaunay* del, uint32_t tetIdx, uint32_t ptIdx, std::stack<uint32_t>
   
 
   lastIdx = oppAIdx;
-
-   //std::cout << "performed flip 14 " << del->tetrahedra.size() << "\n";
-
-  //assert_consistency(del);
   
 }
 
@@ -1191,7 +1190,6 @@ void assert_delaunay(Delaunay* del, uint32_t ptSize) {
         continue;
       }
       int res = in_sphere_3d_Inexact(del->points[tet[0]], del->points[tet[1]], del->points[tet[2]], del->points[tet[3]], del->points[pIdx]);
-
       assert(res != 1);
     }
   }
@@ -1336,16 +1334,15 @@ Delaunay* generateDelaunayTest() {
   Point3d p5 = {0.0,0.0, -1.0};
   Point3d p6 = {0.0,0.0, 1.0};
   //std::vector<Point3d> points = {p1,p2,p3,p4,p5,p6};
-  //std::vector<Point3d> points = get_points(99000, 1);
-
+  //std::vector<Point3d> points = get_points(10000, 1);
 
 
   
   std::vector<Point3d> points;
-  double m = 15.0;
-  for(int i = 0; i < 30; i++) {
-    for (int j = 0; j < 30; j++) {
-      for(int k = 0; k < 30; k++) {
+  double m = 5.0;
+  for(int i = 0; i < 11; i++) {
+    for (int j = 0; j < 11; j++) {
+      for(int k = 0; k < 11; k++) {
         double di = (double) i;
         double dj = (double) j;
         double dk = (double) k;
@@ -1354,14 +1351,10 @@ Delaunay* generateDelaunayTest() {
       }
     }
   }
-  
-  
-  
-  
 
   Delaunay* del = generateDelaunay(points);
   std::vector<uint32_t> ttd = {0}; 
-  draw_tetras_and_point(del, del->points[19]);
+  draw_tetra(del);
   return del;
 }
 
@@ -1377,18 +1370,6 @@ void generateDelaunayTestMultiple() {
 
 int do_delaunay() {
 
-/*Point3d p0 = {1.0,0.0,0.0};
-  Point3d p1 = {0.0,1.0,0.0};
-  Point3d p2 = {0.0,0.0,1.0};
-  Point3d p3 = {-1.0,0.0,0.0};
-  Point3d p4 = {2.0,0.0,0.0};
-
-  std::cout << "in shpere test: " << in_sphere_3d_SOS(p0,p1,p2,p3, p4) << "\n"; 
-  std::cout << "in shpere test: " << in_sphere_3d_SOS(p1,p0,p2,p3, p4) << "\n"; 
-  return 0;
-  */
-  
-
   try {
     app.initialize();
   }
@@ -1400,5 +1381,4 @@ int do_delaunay() {
   return EXIT_SUCCESS;
   
 }
-
 
